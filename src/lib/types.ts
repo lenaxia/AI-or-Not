@@ -22,11 +22,13 @@ export interface RoundResponse {
 export interface GuessResponse {
   correct: boolean;
   truth: Verdict;
+  /** Running server-side score after this guess. */
+  correctSoFar: number;
+  totalSoFar: number;
 }
 
-export interface SubmitScoreBody {
-  correct: number;
-  total: number;
+export interface StartResponse {
+  gameToken: string;
   mode: Mode;
 }
 

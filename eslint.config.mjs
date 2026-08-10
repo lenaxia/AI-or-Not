@@ -12,8 +12,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
-    // Untracked dir dropped into /workspace by an external process; not part
-    // of this project. Keep it out of lint/type-check.
+    // Platform/opencode state dropped into /workspace — not project code.
+    ".local/**",
     "llmsafespaces/**",
   ]),
 ]);

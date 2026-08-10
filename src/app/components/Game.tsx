@@ -69,6 +69,7 @@ export default function Game() {
   const [preview, setPreview] = useState<LeaderboardPreview | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const gameTokenRef = useRef<string | null>(null);
   const hardTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const loadPreview = useCallback(async () => {
@@ -140,12 +141,40 @@ export default function Game() {
     setRound(1);
     setCorrect(0);
     setPhase("loading");
+    setError(null);
+    // Issue a server-side game session. The server will track the score;
+    // the client just holds the token.
+    try {
+      const startRes = await fetch("/api/game/start", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mode: m }),
+      });
+      if (!startRes.ok) {
+        const data = await startRes.json().catch(() => ({}));
+        setError(data.message ?? "Could not start game.");
+        setPhase("start");
+        return;
+      }
+      const { gameToken } = await startRes.json();
+      gameTokenRef.current = gameToken;
+    } catch {
+      setError("Network error starting game.");
+      setPhase("start");
+      return;
+    }
     const ok = await fetchRound(m);
     if (ok) setPhase("playing");
   };
 
   const submitGuess = async (v: Verdict) => {
     if (!current || phase !== "playing" || busy) return;
+    const gameToken = gameTokenRef.current;
+    if (!gameToken) {
+      setError("Game session lost. Please restart.");
+      setPhase("start");
+      return;
+    }
     setBusy(true);
     setGuess(v);
     clearHardTimer();
@@ -153,11 +182,12 @@ export default function Game() {
       const res = await fetch("/api/game/guess", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token: current.token, guess: v }),
+        body: JSON.stringify({ token: current.token, guess: v, gameToken }),
       });
       const data = (await res.json()) as GuessResponse;
       setResult(data);
-      if (data.correct) setCorrect((c) => c + 1);
+      // Use the server's authoritative count, not a local increment.
+      setCorrect(data.correctSoFar);
       setPhase("reveal");
     } catch {
       setError("Network error submitting guess.");
@@ -169,15 +199,27 @@ export default function Game() {
   const nextRound = async () => {
     if (round >= TOTAL_ROUNDS) {
       setPhase("loading");
+      const gameToken = gameTokenRef.current;
+      if (!gameToken) {
+        setError("Game session lost.");
+        setPhase("start");
+        return;
+      }
       try {
         const res = await fetch("/api/leaderboard", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ correct, total: TOTAL_ROUNDS, mode }),
+          body: JSON.stringify({ gameToken }),
         });
-        const data = (await res.json()) as ScoreStats;
-        setStats(data);
+        const data = await res.json();
+        if (!res.ok) {
+          setError(data.message ?? "Could not save score.");
+          setPhase("start");
+          return;
+        }
+        setStats(data as ScoreStats);
         setPhase("finished");
+        gameTokenRef.current = null;
         void loadPreview();
       } catch {
         setError("Could not save score.");
@@ -201,6 +243,7 @@ export default function Game() {
     setRound(0);
     setCorrect(0);
     setHidden(false);
+    gameTokenRef.current = null;
   };
 
   // ---------- START SCREEN ----------

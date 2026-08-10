@@ -2,16 +2,17 @@ import { z } from "zod";
 
 export const modeSchema = z.enum(["easy", "hard"]);
 
+export const startBodySchema = z.object({
+  mode: modeSchema,
+});
+
 export const guessBodySchema = z.object({
   token: z.string().min(1),
   guess: z.enum(["left", "right", "both", "none"]),
+  gameToken: z.string().min(1),
 });
 
 export const submitScoreBodySchema = z.object({
-  correct: z.number().int().nonnegative(),
-  total: z.number().int().positive(),
-  mode: modeSchema,
-}).refine((d) => d.correct <= d.total, {
-  message: "correct cannot exceed total",
-  path: ["correct"],
+  gameToken: z.string().min(1),
 });
+

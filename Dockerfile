@@ -49,7 +49,7 @@ ENV NODE_ENV=production \
     PORT=3000 \
     HOSTNAME=0.0.0.0 \
     # Default to a file-backed SQLite DB inside the volume mount point.
-    ROA_DB_URL=file:/app/data/realorai.db \
+    ROA_DB_URL=file:/app/data/ai-or-not.db \
     # Default to baked-in images; overridable via volume mount.
     ROA_IMAGES_DIR=/app/images
 
@@ -58,7 +58,7 @@ RUN groupadd --system --gid 1001 nodejs && \
     useradd --system --uid 1001 --gid nodejs --home-dir /app --shell /usr/sbin/nologin nextjs && \
     mkdir -p /app/data /app/images && chown -R nextjs:nodejs /app
 
-# Standalone server + its node_modules trace.
+# Standalone server + its node_modules trace (includes drizzle-orm migrator).
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 # Static client assets (not included by standalone by default).
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
@@ -66,6 +66,10 @@ COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 COPY --from=builder --chown=nextjs:nodejs /app/public ./public
 # Baked-in placeholder images (consumer replaces with real content).
 COPY --from=builder --chown=nextjs:nodejs /app/images ./images
+# Drizzle migrations — applied automatically on first DB access via
+# ensureSchema() in src/lib/leaderboard.ts (uses drizzle-orm migrator,
+# which IS traced into the standalone bundle; no drizzle-kit needed).
+COPY --from=builder --chown=nextjs:nodejs /app/drizzle ./drizzle
 
 USER nextjs
 

@@ -1,6 +1,6 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 
-const DEFAULT_SECRET = "realorai-dev-secret-CHANGE-ME";
+const DEFAULT_SECRET = "ai-or-not-dev-secret-CHANGE-ME";
 
 export function getSecret(): string {
   return process.env.ROA_SECRET?.trim() || DEFAULT_SECRET;

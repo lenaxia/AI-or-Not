@@ -1,4 +1,6 @@
 import "server-only";
+import path from "node:path";
+import { migrate } from "drizzle-orm/libsql/migrator";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { scores } from "@/db/schema";
@@ -7,25 +9,21 @@ import type {
   LeaderboardEntry,
   LeaderboardPreview,
   ScoreStats,
-  SubmitScoreBody,
 } from "./types";
+import type { GameState } from "./game-store";
 
 let ensurePromise: Promise<void> | null = null;
 
-// Auto-create the table on first run so local dev "just works" without
-// running drizzle-kit. In production use `drizzle-kit migrate`.
+// Apply pending Drizzle migrations on first DB access. Uses drizzle-orm's
+// built-in migrator (traced into the standalone bundle — no drizzle-kit
+// needed at runtime). Idempotent: tracks applied migrations in
+// __drizzle_migrations. In dev the migrations live at ./drizzle; in the
+// Docker image they're copied to /app/drizzle (CWD is /app).
 export function ensureSchema(): Promise<void> {
   if (!ensurePromise) {
-    ensurePromise = db.run(
-      `CREATE TABLE IF NOT EXISTS scores (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        score INTEGER NOT NULL,
-        correct INTEGER NOT NULL,
-        total INTEGER NOT NULL,
-        mode TEXT NOT NULL,
-        created_at INTEGER NOT NULL DEFAULT (unixepoch() * 1000)
-      )`,
-    ).then(() => undefined);
+    ensurePromise = migrate(db, {
+      migrationsFolder: path.join(process.cwd(), "drizzle"),
+    }).then(() => undefined);
   }
   return ensurePromise;
 }
@@ -52,24 +50,24 @@ function median(values: number[]): number {
 }
 
 export async function submitScore(
-  body: SubmitScoreBody,
+  game: GameState,
 ): Promise<ScoreStats> {
   await ensureSchema();
-  const total = Math.max(1, body.total);
-  const correct = Math.min(total, Math.max(0, body.correct));
+  const total = Math.max(1, game.total);
+  const correct = Math.min(total, Math.max(0, game.correct));
   const score = Math.round((correct / total) * 100);
 
   await db.insert(scores).values({
     score,
     correct,
     total,
-    mode: body.mode,
+    mode: game.mode,
   });
 
   const peers = await db
     .select({ score: scores.score })
     .from(scores)
-    .where(eq(scores.mode, body.mode));
+    .where(eq(scores.mode, game.mode));
 
   const peerScores = peers.map((p) => p.score);
   const higher = peerScores.filter((s) => s > score).length;

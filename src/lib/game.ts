@@ -20,7 +20,7 @@ const WEIGHTS: Array<[Verdict, number]> = [
   ["none", 0.1],
 ];
 
-function rollTruth(): Verdict {
+export function rollTruth(): Verdict {
   const r = Math.random();
   let acc = 0;
   for (const [v, w] of WEIGHTS) {
