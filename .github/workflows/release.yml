@@ -41,7 +41,3 @@ jobs:
           # (release-please had proposed v1.0.0); this manifest tells it the
           # current released version so future bumps compute from 0.1.0.
           manifest-file: .release-please-manifest.json
-          # Force the next release to 0.1.0 to reconcile release-please's
-          # internal state (it proposed v1.0.0 which was deleted; this
-          # re-releases the correct version). Remove after v0.1.0 ships.
-          release-as: "0.1.0"
