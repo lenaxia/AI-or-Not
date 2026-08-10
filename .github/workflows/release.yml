@@ -37,3 +37,7 @@ jobs:
           release-type: node
           # package.json is the source of truth for the version.
           include-component-in-tag: false
+          # Anchor to the actually-released version. We tagged v0.1.0 manually
+          # (release-please had proposed v1.0.0); this manifest tells it the
+          # current released version so future bumps compute from 0.1.0.
+          manifest-file: .release-please-manifest.json
