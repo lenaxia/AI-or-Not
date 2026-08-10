@@ -1,21 +1,58 @@
-# Real or AI?
+# AI-or-Not
 
-A game where two photos appear side by side — one, both, or neither may be
-AI-generated. You guess which. Score 10 rounds and see where you land on the
-player distribution.
+[![Release](https://img.shields.io/github/v/release/lenaxia/AI-or-Not?display_name=tag&include_prereleases)](https://github.com/lenaxia/AI-or-Not/releases)
+[![CI](https://github.com/lenaxia/AI-or-Not/actions/workflows/release.yml/badge.svg)](https://github.com/lenaxia/AI-or-Not/actions/workflows/release.yml)
+[![Docker](https://github.com/lenaxia/AI-or-Not/actions/workflows/docker-publish.yml/badge.svg)](https://github.com/lenaxia/AI-or-Not/actions/workflows/docker-publish.yml)
+[![Container](https://img.shields.io/badge/container-ghcr.io-blue?logo=docker)](https://github.com/lenaxia/AI-or-Not/pkgs/container/ai-or-not)
 
-The backend serves every image through an opaque, server-proxied endpoint so the
-**source of each photo is never exposed** to the browser — players can't cheat by
-inspecting filenames or URLs.
+> Two photos appear. One, both, or neither may be AI-generated. **Can you tell?**
+> Play 10 rounds and see where you land on the player distribution.
+
+AI-or-Not is a game that tests whether you can spot AI-generated images.
+Every round shows two photos side by side and asks a harder question than
+"left or right": the right answer might be **left**, **right**, **both**, or
+**neither** — so a coin-flip scores ~25% and real skill shows up in the curve.
+
+The backend serves every image through an **opaque, server-proxied endpoint**
+so the source of each photo is never exposed to the browser. Players can't
+cheat by inspecting filenames, URLs, or the network tab.
 
 ## Features
 
-- **A / B / None / Both** guessing (random scores ~25%, so skill shows in the curve)
-- **Easy** and **Hard** modes (Hard hides the images after 2 seconds)
-- **Leaderboard & distribution** — rank, percentile, mean, and a histogram of all
-  scores in the same mode
+- **A / B / None / Both** guessing — nuanced enough that skill is measurable
+- **Easy** and **Hard** modes — Hard hides the images after 2 seconds
+- **Leaderboard & distribution** — rank, percentile, mean, and a histogram
+  of all scores in the same mode
 - **Source-hidden image proxy** — HMAC-derived opaque IDs, signed round tokens
 - **SQLite** storage (Drizzle ORM + libsql; swappable to Turso/Postgres)
+
+## Quickstart (Docker)
+
+The image is published to GHCR on every release.
+
+```bash
+docker pull ghcr.io/lenaxia/ai-or-not:latest
+docker run --rm -p 3000:3000 \
+  -v ./images:/app/images \
+  -v ./data:/app/data \
+  ghcr.io/lenaxia/ai-or-not:latest
+```
+
+Open <http://localhost:3000>. Tag variants: `:vX.Y.Z`, `:vX.Y`, `:vX`,
+`:latest`, `:sha-<short>`. Multi-arch: `linux/amd64`, `linux/arm64`.
+
+Mount your own `images/ai/` and `images/real/` folders to replace the
+baked-in placeholders (see [Adding images](#adding-images) below).
+
+## Quickstart (local dev)
+
+```bash
+npm install
+npm run dev
+```
+
+Open <http://localhost:3000>. The app ships with labeled placeholder images
+so it runs immediately — replace them to make it a real game.
 
 ## Tech
 
@@ -25,27 +62,36 @@ inspecting filenames or URLs.
 - [Zod](https://zod.dev) for API request validation
 - [Drizzle ORM](https://orm.drizzle.team) + [@libsql/client](https://github.com/tursodatabase/libsql-client-ts)
 
-## Getting started
+## Adding images
 
-```bash
-npm install
-npm run dev
+Drop image files into either folder. Supported types: `.jpg` `.jpeg` `.png`
+`.webp` `.gif` `.avif` `.bmp` `.svg`. You need **at least 2 images in each
+folder** to play.
+
+```
+images/
+├── ai/        # AI-generated images
+└── real/      # real photos
 ```
 
-Open [http://localhost:3000](http://localhost:3000).
+### Suggested sources
 
-The app ships with labeled placeholder images so it runs immediately. To make it
-a real game, drop your own images into `images/ai/` and `images/real/` and delete
-the placeholders — see [`images/README.md`](./images/README.md) for sourcing
-ideas (500px, Flickr, r/StableDiffusion, Civitai, …) and supported file types.
+**Real photos** (check each source's license/terms before scraping):
 
-You need **at least 2 images in each folder** to play.
+- [500px](https://500px.com), [Flickr](https://flickr.com) (CC via the [Flickr API](https://www.flickr.com/services/api/))
+- [Unsplash](https://unsplash.com/developers), [Pexels](https://www.pexels.com/api/), [Wikimedia Commons](https://commons.wikimedia.org)
+
+**AI images:**
+
+- [r/StableDiffusion](https://www.reddit.com/r/StableDiffusion/), [r/midjourney](https://www.reddit.com/r/midjourney/) (via the Reddit API)
+- [Civitai](https://civitai.com)
+- Generate your own with Stable Diffusion / Midjourney / DALL·E
 
 ## Database
 
-Scores persist to a local SQLite file (`data/ai-or-not.db`, auto-created on first
-run). The schema is auto-applied on startup, so no migration step is required for
-local dev. For production, generate and run migrations:
+Scores persist to a local SQLite file (`data/ai-or-not.db`, auto-created on
+first run). The schema is auto-applied on startup, so no migration step is
+required for local dev. For production, generate and run migrations:
 
 ```bash
 npm run db:generate   # create a migration from the schema
@@ -75,14 +121,49 @@ ROA_DB_URL=...
 | `TURSO_AUTH_TOKEN` | — | Turso auth token |
 | `ROA_SECRET` | *(dev default)* | Secret used to sign round tokens & hash image IDs — **set this in production** |
 
+## Releases
+
+Releases are automated via [release-please](https://github.com/googleapis/release-please)
+and driven by [Conventional Commits](https://www.conventionalcommits.org/):
+
+| Commit prefix | Bump | Example |
+| --- | --- | --- |
+| `feat:` | minor | `feat: add sound effects` → `v0.2.0` |
+| `fix:`, `perf:` | patch | `fix: score calc off-by-one` → `v0.1.1` |
+| `feat!:`, `BREAKING CHANGE:` footer | major | `feat!: new schema` → `v1.0.0` |
+| `chore:`, `docs:`, `test:`, `ci:`, `refactor:` | none | no release triggered |
+
+Each push to `main` opens/updates a **release PR**. Merge it to cut a tag and
+publish the Docker image.
+
 ## How it works
 
-1. `GET /api/game/round?mode=easy|hard` → returns two opaque image IDs + a signed
-   token. The token encodes the **truth** (which side(s) are AI) but only the
-   server can read it.
-2. Images are fetched via `GET /api/img/[id]` — the ID is an HMAC of the on-disk
-   path, so neither the folder (`ai` vs `real`) nor the filename leaks.
+1. `GET /api/game/round?mode=easy|hard` → returns two opaque image IDs + a
+   signed token. The token encodes the **truth** (which side(s) are AI) but
+   only the server can read it.
+2. Images are fetched via `GET /api/img/[id]` — the ID is an HMAC of the
+   on-disk path, so neither the folder (`ai` vs `real`) nor the filename leaks.
 3. `POST /api/game/guess` `{ token, guess }` → server verifies the token and
    returns `{ correct, truth }`.
 4. `POST /api/leaderboard` `{ correct, total, mode }` → saves the score and
    returns rank, percentile, mean, median, and a score distribution histogram.
+
+## Project layout
+
+```
+src/
+├── app/
+│   ├── api/
+│   │   ├── game/{round,guess}/route.ts   # round builder + answer checker
+│   │   ├── img/[id]/route.ts             # source-hidden image proxy
+│   │   └── leaderboard/route.ts          # score submission + stats
+│   ├── components/                       # Game (state machine) + Distribution
+│   └── layout.tsx, page.tsx
+├── db/                                   # Drizzle schema + client
+└── lib/                                  # catalog, game, crypto, schemas, types
+images/{ai,real}/                         # image folders (gitignored content)
+```
+
+## License
+
+MIT

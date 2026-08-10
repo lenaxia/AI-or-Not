@@ -32,7 +32,7 @@ jobs:
   release-please:
     runs-on: ubuntu-latest
     steps:
-      - uses: google-github-actions/release-please-action@v4
+      - uses: googleapis/release-please-action@v5
         with:
           release-type: node
           # package.json is the source of truth for the version.
