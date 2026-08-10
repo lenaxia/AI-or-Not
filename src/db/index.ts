@@ -8,7 +8,7 @@ import * as schema from "./schema";
 const DB_URL =
   process.env.ROA_DB_URL?.trim() ||
   process.env.TURSO_DATABASE_URL?.trim() ||
-  "file:./data/realorai.db";
+  "file:./data/ai-or-not.db";
 
 // For local file-backed SQLite, make sure the parent directory exists so the
 // app works on first run with zero setup. Remote (Turso/Postgres) URLs skip this.

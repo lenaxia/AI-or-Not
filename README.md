@@ -43,7 +43,7 @@ You need **at least 2 images in each folder** to play.
 
 ## Database
 
-Scores persist to a local SQLite file (`data/realorai.db`, auto-created on first
+Scores persist to a local SQLite file (`data/ai-or-not.db`, auto-created on first
 run). The schema is auto-applied on startup, so no migration step is required for
 local dev. For production, generate and run migrations:
 
@@ -70,7 +70,7 @@ ROA_DB_URL=...
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `ROA_IMAGES_DIR` | `./images` | Root folder containing `ai/` and `real/` |
-| `ROA_DB_URL` | `file:./data/realorai.db` | libsql/SQLite database URL |
+| `ROA_DB_URL` | `file:./data/ai-or-not.db` | libsql/SQLite database URL |
 | `TURSO_DATABASE_URL` | — | Turso remote DB URL (overrides `ROA_DB_URL`) |
 | `TURSO_AUTH_TOKEN` | — | Turso auth token |
 | `ROA_SECRET` | *(dev default)* | Secret used to sign round tokens & hash image IDs — **set this in production** |

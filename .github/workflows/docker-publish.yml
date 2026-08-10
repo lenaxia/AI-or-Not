@@ -1,0 +1,68 @@
+# Build & publish the Docker image when a version tag is cut by release.yml.
+#
+# Triggers:
+#   - push tag v*.*.*    (created automatically by release-please)
+#   - workflow_dispatch  (manual rebuild of HEAD as :main)
+#
+# Pushes to ghcr.io/lenaxia/ai-or-not (GHCR lowercases org/repo) with tags:
+#   :vX.Y.Z       (exact version, immutable)
+#   :vX.Y          (latest patch series)
+#   :vX            (latest minor series)
+#   :latest        (most recent release on the default branch)
+#   :sha-<short>   (git short SHA, for traceability)
+
+name: Publish Docker image
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU (multi-arch emulation)
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Parse semver tag into variants
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=match,pattern=v(.*),group=1
+            type=match,pattern=v(\d.\d.\d),group=1
+            type=match,pattern=v(\d.\d),group=1
+            type=match,pattern=v(\d),group=1
+            type=sha,format=short
+            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

@@ -1,0 +1,36 @@
+# Version control & IDE
+.git
+.gitignore
+.gitattributes
+.vscode
+.idea
+
+# Next.js build artifacts (regenerated in image)
+.next
+out
+build
+
+# Local data & runtime state (must not be baked in)
+data
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
+
+# Local env (image uses runtime env)
+.env
+.env.*
+!.env.example
+
+# Tooling state
+.local
+.vercel
+.coverage
+node_modules
+
+# Documentation & scripts not needed at runtime
+README.md
+images/README.md
+*.md
+drizzle
+.github

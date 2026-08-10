@@ -1,0 +1,22 @@
+# Auto-respond to newly opened issues via ai-workflows.
+# Registered consumer: lenaxia/AI-or-Not (see ai-workflows/consumers/ai-or-not.yaml).
+
+name: Issue Opened
+
+on:
+  issues:
+    types: [opened]
+
+permissions:
+  id-token: write
+  contents: read
+  issues: write
+  pull-requests: write
+
+jobs:
+  respond:
+    uses: lenaxia/ai-workflows/.github/workflows/issue-opened.yml@v0.2.7
+    secrets: inherit
+    with:
+      version: v0.2.7
+      project_name: AI-or-Not

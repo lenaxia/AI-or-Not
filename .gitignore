@@ -46,6 +46,9 @@ yarn-error.log*
 # opencode local state
 /.local/
 
+# Untracked dir dropped into /workspace by an external process
+/llmsafespaces/
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts

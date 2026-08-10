@@ -1,0 +1,39 @@
+# Automated semver releases via Conventional Commits.
+#
+# How it works:
+#   1. Every push to main, release-please inspects commit messages since the
+#      last release. If there are releasable commits (feat:, fix:, perf:, …)
+#      it opens/updates a "release PR" that bumps package.json + CHANGELOG.md.
+#   2. Merging the release PR tags the commit (vX.Y.Z) and creates a GitHub
+#      Release.
+#   3. The tag push triggers docker-publish.yml, which builds and pushes the
+#      image to GHCR.
+#
+# Bump level is inferred from commit prefixes:
+#   feat:              → minor (v1.2.0)
+#   fix:, perf:        → patch (v1.2.1)
+#   feat!: / footer    → major (v2.0.0)
+#                      (a `BREAKING CHANGE:` footer or `!` after the type)
+#
+# To force a specific version despite commit history, push a commit whose
+# body contains `Release-As: vX.Y.Z` and release-please will honor it.
+
+name: Release
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: google-github-actions/release-please-action@v4
+        with:
+          release-type: node
+          # package.json is the source of truth for the version.
+          include-component-in-tag: false
