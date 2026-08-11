@@ -65,3 +65,67 @@ describe("catalog integration: schema gate", () => {
     expect(await getCounts()).toEqual({ ai: 1, real: 1 });
   });
 });
+
+describe("catalog integration: first-boot retry semantics", () => {
+  // Regression for two review-round bugs:
+  //  1. getCatalog() returned null on the failure path (the `!` hid it).
+  //  2. Partial-scan failure orphaned rows because the retry gate was
+  //     `byId.size === 0` — a partial scan left rows so retry never fired.
+  // Both fixed: gate is now `!bootFsScanDone` (row-count independent), and
+  // the catch returns the in-flight catalog to the failing caller.
+
+  it("returns a valid (empty) Catalog on first-call scan failure, then retries", async () => {
+    const aiDir = path.join(tmpDir!, "images", "ai");
+    await fs.mkdir(aiDir, { recursive: true });
+    await fs.writeFile(path.join(aiDir, "a.jpg"), Buffer.from("FAKEJPEG:a"));
+
+    const cat = await import("./catalog");
+    const { getCatalog, __resetCatalogForTests } = cat;
+    __resetCatalogForTests();
+
+    // Force the FS scan to throw on the first call by revoking read perm on
+    // the file. Restore before the retry so the second call succeeds.
+    await fs.chmod(path.join(aiDir, "a.jpg"), 0o000);
+    const first = await getCatalog();
+    // Concern 1: first call must NOT be null — it returns the empty Catalog
+    // so callers degrade gracefully (e.g. 503 not-enough-images, not 500).
+    expect(first).not.toBeNull();
+    expect(first.byId.size).toBe(0);
+
+    // Restore and retry — the scan should now complete.
+    await fs.chmod(path.join(aiDir, "a.jpg"), 0o644);
+    const second = await getCatalog();
+    expect(second).not.toBeNull();
+    expect(second.byId.size).toBe(1);
+  });
+
+  it("retries after a partial scan (already-inserted rows don't block the retry)", async () => {
+    // Two files in ai/. First scan will insert file 1 then throw on file 2.
+    // Retry must pick up file 2 — the gate is !bootFsScanDone, not row count.
+    const aiDir = path.join(tmpDir!, "images", "ai");
+    await fs.mkdir(aiDir, { recursive: true });
+    await fs.writeFile(path.join(aiDir, "keep.jpg"), Buffer.from("FAKEJPEG:keep"));
+    await fs.writeFile(path.join(aiDir, "locked.jpg"), Buffer.from("FAKEJPEG:locked"));
+
+    const cat = await import("./catalog");
+    const { getCatalog, __resetCatalogForTests } = cat;
+    __resetCatalogForTests();
+
+    // Lock the second file → scan throws on it (whether before or after
+    // keep.jpg is processed depends on readdir order). Either way the scan
+    // doesn't complete, so bootFsScanDone stays false.
+    await fs.chmod(path.join(aiDir, "locked.jpg"), 0o000);
+    const first = await getCatalog();
+    // The returned catalog is the pre-scan snapshot (possibly empty, possibly
+    // partial). What matters: it's non-null and the caller degrades gracefully.
+    expect(first).not.toBeNull();
+
+    // Unlock and retry. !bootFsScanDone is still true (scan never completed),
+    // so the retry fires regardless of how many rows the partial scan left.
+    // reindexFromFs is idempotent — it skips already-indexed files and picks
+    // up the rest.
+    await fs.chmod(path.join(aiDir, "locked.jpg"), 0o644);
+    const second = await getCatalog();
+    expect(second.byId.size).toBe(2);
+  });
+});

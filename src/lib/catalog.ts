@@ -86,32 +86,40 @@ export async function reloadCache(): Promise<void> {
 }
 
 /**
- * First-boot auto-migration: when the table is empty AND we have not yet
- * successfully completed a FS scan, scan `images/{ai,real}/` exactly as the
- * old catalog did, so existing local deploys keep working with zero setup.
+ * First-boot auto-migration: when we have not yet successfully completed a
+ * FS scan, scan `images/{ai,real}/` exactly as the old catalog did, so
+ * existing local deploys keep working with zero setup.
  *
- * Retry semantics: `bootFsScanDone` is only set on success, AND on failure
- * we null out `catalogPromise` so the next caller re-enters this block
- * (otherwise the resolved-but-empty promise would short-circuit the guard
- * and the catalog would stay empty until process restart). Narrow race: a
- * second request arriving while the first scan is mid-flight awaits the
- * pre-reload `catalogPromise` and may briefly see an empty catalog.
- * Self-heals on the next call.
+ * Retry semantics: `bootFsScanDone` is only set on a *complete* scan. On
+ * failure we (a) null `catalogPromise` so the next caller re-enters this
+ * block (otherwise the resolved promise would short-circuit the outer
+ * guard and the catalog would stay stale until restart) and (b) return the
+ * already-loaded catalog to THIS caller so they get a valid (possibly
+ * empty/partial) Catalog instead of null. The gate is `!bootFsScanDone`,
+ * NOT `byId.size === 0` — that way a partial scan that inserted some rows
+ * before throwing still retries (reindexFromFs is idempotent and skips
+ * already-indexed files, so the retry picks up where it left off).
+ *
+ * Narrow race: a second request arriving while the first scan is mid-flight
+ * awaits the pre-reload `catalogPromise` and may briefly see a stale
+ * catalog. Self-heals on the next call.
  */
 export async function getCatalog(): Promise<Catalog> {
   if (!catalogPromise) {
     catalogPromise = loadFromDb();
     const cat = await catalogPromise;
-    if (cat.byId.size === 0 && !bootFsScanDone) {
+    if (!bootFsScanDone) {
       try {
         await reindexFromFs();
         bootFsScanDone = true;
       } catch (err) {
         console.warn("[catalog] first-boot FS migration failed:", err);
         // Null the cache so the next caller re-enters this block and retries.
-        // Without this, the resolved-but-empty catalogPromise would short-
-        // circuit the outer `if (!catalogPromise)` guard.
+        // Without this, the resolved catalogPromise would short-circuit the
+        // outer `if (!catalogPromise)` guard. Return `cat` to THIS caller so
+        // they get a valid Catalog (the ! was hiding a null return here).
         catalogPromise = null;
+        return cat;
       }
     }
   }
