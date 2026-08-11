@@ -6,10 +6,18 @@ export type Verdict = "left" | "right" | "both" | "none";
 
 export interface CatalogEntry {
   id: string;
+  sha1: string;
+  /** @deprecated use `locator` + `source` (kept for the fs-only image proxy). */
   absPath: string;
+  locator: string;
+  source: "fs" | "s3";
   ext: string;
   mime: string;
   label: Label;
+  elo: number;
+  appearances: number;
+  fools: number;
+  retired: boolean;
 }
 
 export interface RoundResponse {
