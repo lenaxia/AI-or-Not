@@ -1,8 +1,7 @@
 import "server-only";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { eq } from "drizzle-orm";
-import { db } from "@/db";
+import { db, ensureSchema } from "@/db";
 import { images, type ImageRow } from "@/db/schema";
 import type { CatalogEntry, Label } from "./types";
 import { sha1Hex, imageIdFromSha1 } from "./image-hash";
@@ -13,9 +12,14 @@ function imagesDir(): string {
 
 /**
  * Images below this ELO are excluded from rotation (runtime check, never
- * persisted). Tune via ROA_ELO_RETIRE_BELOW. Default 600.
+ * persisted). Tune via ROA_ELO_RETIRE_BELOW. Default 600. Set to 0 to
+ * disable the floor entirely.
  */
-const ELO_RETIRE_BELOW = Number(process.env.ROA_ELO_RETIRE_BELOW) || 600;
+const ELO_RETIRE_BELOWRaw = process.env.ROA_ELO_RETIRE_BELOW;
+const ELO_RETIRE_BELOW =
+  ELO_RETIRE_BELOWRaw === undefined || ELO_RETIRE_BELOWRaw.trim() === ""
+    ? 600
+    : Number(ELO_RETIRE_BELOWRaw);
 
 const IMAGE_EXT: Record<string, string> = {
   ".jpg": "image/jpeg",
@@ -36,7 +40,7 @@ interface Catalog {
 }
 
 let catalogPromise: Promise<Catalog> | null = null;
-let fsIndexAttempted = false;
+let bootFsScanDone = false;
 
 function toEntry(row: ImageRow): CatalogEntry {
   return {
@@ -56,6 +60,10 @@ function toEntry(row: ImageRow): CatalogEntry {
 }
 
 async function loadFromDb(): Promise<Catalog> {
+  // Migrations MUST have run before we read the `images` table — otherwise
+  // a fresh deploy throws "no such table" on the very first /api/game/round
+  // request, before any leaderboard path has triggered ensureSchema().
+  await ensureSchema();
   const rows = await db.select().from(images);
   const byId = new Map<string, CatalogEntry>();
   const byLabel: Record<Label, CatalogEntry[]> = { ai: [], real: [] };
@@ -77,17 +85,25 @@ export async function reloadCache(): Promise<void> {
   await catalogPromise;
 }
 
+/**
+ * First-boot auto-migration: when the table is empty AND we have not yet
+ * successfully completed a FS scan, scan `images/{ai,real}/` exactly as the
+ * old catalog did, so existing local deploys keep working with zero setup.
+ *
+ * `bootFsScanDone` is only set on success — a transient FS failure
+ * (permissions, mis-mounted volume) leaves it false so the next call retries.
+ * Narrow race: a second request arriving while the first scan is mid-flight
+ * awaits the pre-reload `catalogPromise` and may briefly see an empty
+ * catalog. Self-heals on the next call (which hits the populated cache).
+ */
 export async function getCatalog(): Promise<Catalog> {
   if (!catalogPromise) {
     catalogPromise = loadFromDb();
-    // First-load one-time filesystem migration: if the table is empty and
-    // we've never tried indexing, scan images/{ai,real}/ exactly as the old
-    // catalog did, so existing local deploys keep working with zero setup.
     const cat = await catalogPromise;
-    if (cat.byId.size === 0 && !fsIndexAttempted) {
-      fsIndexAttempted = true;
+    if (cat.byId.size === 0 && !bootFsScanDone) {
       try {
         await reindexFromFs();
+        bootFsScanDone = true;
       } catch (err) {
         console.warn("[catalog] first-boot FS migration failed:", err);
       }
@@ -100,14 +116,11 @@ export async function getEntry(
   id: string,
 ): Promise<CatalogEntry | undefined> {
   const cat = await getCatalog();
-  const cached = cat.byId.get(id);
-  if (cached) return cached;
-  // Cache miss after a write: query the DB and stash it.
-  const rows = await db.select().from(images).where(eq(images.id, id));
-  if (rows.length === 0) return undefined;
-  const e = toEntry(rows[0]!);
-  cat.byId.set(id, e);
-  return e;
+  // Lookups go through the cache only. Writers (reindex/upload/retire/delete)
+  // all end with reloadCache(), so the cache is always authoritative. We
+  // deliberately do NOT do an incremental stash here — earlier code added
+  // missed rows to byId but not byLabel, leaving the two maps inconsistent.
+  return cat.byId.get(id);
 }
 
 export async function getCounts(): Promise<{ ai: number; real: number }> {
@@ -218,7 +231,8 @@ export async function reindexFromFs(): Promise<{
 }
 
 /** Test-only: reset the in-memory cache + FS-attempt flag. */
+/** Test-only: reset the in-memory cache + first-boot scan flag. */
 export function __resetCatalogForTests(): void {
   catalogPromise = null;
-  fsIndexAttempted = false;
+  bootFsScanDone = false;
 }

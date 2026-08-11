@@ -1,8 +1,7 @@
 import "server-only";
-import path from "node:path";
-import { migrate } from "drizzle-orm/libsql/migrator";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
+import { ensureSchema } from "@/db";
 import { scores } from "@/db/schema";
 import type {
   Bucket,
@@ -11,22 +10,6 @@ import type {
   ScoreStats,
 } from "./types";
 import type { GameState } from "./game-store";
-
-let ensurePromise: Promise<void> | null = null;
-
-// Apply pending Drizzle migrations on first DB access. Uses drizzle-orm's
-// built-in migrator (traced into the standalone bundle — no drizzle-kit
-// needed at runtime). Idempotent: tracks applied migrations in
-// __drizzle_migrations. In dev the migrations live at ./drizzle; in the
-// Docker image they're copied to /app/drizzle (CWD is /app).
-export function ensureSchema(): Promise<void> {
-  if (!ensurePromise) {
-    ensurePromise = migrate(db, {
-      migrationsFolder: path.join(process.cwd(), "drizzle"),
-    }).then(() => undefined);
-  }
-  return ensurePromise;
-}
 
 function buildBuckets(rows: { score: number }[]): Bucket[] {
   const buckets: Bucket[] = [];
