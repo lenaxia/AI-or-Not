@@ -74,6 +74,28 @@ describe("adminVerify", () => {
     expect(adminVerify(tampered)).toBe(false);
   });
 
+  it("rejects a non-admin token signed with the same secret", async () => {
+    // Regression for the PR-#16 review block: round tokens and game tokens
+    // are signed by the same sign()/ROA_SECRET, so signature alone must not
+    // be a sufficient admin guarantee. A payload lacking kind:"admin" /
+    // admin:true / numeric exp must be rejected.
+    process.env.ROA_ADMIN_PASSWORD = "hunter2";
+    const { sign } = await import("./crypto");
+    // Mimic a game token ({ id, mode, startedAt }) — no kind/admin/exp.
+    const gameToken = sign({ id: "abc", mode: "easy", startedAt: Date.now() });
+    expect(adminVerify(gameToken)).toBe(false);
+    // Mimic a round token ({ l, r, t, m, ts }) — ts is numeric but no kind.
+    const roundToken = sign({ l: "L", r: "R", t: "left", m: "easy", ts: Date.now() });
+    expect(adminVerify(roundToken)).toBe(false);
+    // A payload with kind:"admin" but admin:false (forged shape) still
+    // fails the admin:true check.
+    const forged = sign({ kind: "admin", admin: false, exp: Date.now() + 1000 });
+    expect(adminVerify(forged)).toBe(false);
+    // A payload with the right shape but bad exp type fails.
+    const badExp = sign({ kind: "admin", admin: true, exp: "not-a-number" });
+    expect(adminVerify(badExp)).toBe(false);
+  });
+
   it("accepts a freshly-issued token", () => {
     process.env.ROA_ADMIN_PASSWORD = "hunter2";
     const tok = adminLogin("hunter2");

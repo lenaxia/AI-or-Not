@@ -302,10 +302,17 @@ export async function reindexFromS3(): Promise<{
           indexedAt: now,
           updatedAt: now,
         });
-      } catch {
-        // Race with a concurrent indexer: treat UNIQUE collision as no-op.
-        skipped++;
-        continue;
+      } catch (err) {
+        // Only swallow the UNIQUE-constraint race; rethrow real DB failures
+        // (connection lost, disk full, schema drift) so they don't get
+        // silently counted as "skipped" alongside transient GET failures.
+        const code = (err as { code?: string }).code;
+        const msg = (err as { message?: string }).message ?? "";
+        if (code === "SQLITE_CONSTRAINT" || /UNIQUE/i.test(msg)) {
+          skipped++;
+          continue;
+        }
+        throw err;
       }
       seenThisRun.add(sha1);
       added++;

@@ -53,7 +53,7 @@ export function s3Enabled(): boolean {
 }
 
 /** Exposed for tests to inject a mock client. */
-export function _setS3ClientForTests(mock: S3Client | null): void {
+export function __setS3ClientForTests(mock: S3Client | null): void {
   client = mock;
 }
 

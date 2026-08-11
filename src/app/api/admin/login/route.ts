@@ -1,5 +1,6 @@
 import { adminLogin, adminEnabled, adminSessionCookie } from "@/lib/admin-auth";
 import { rateLimit, getClientIp } from "@/lib/rate-limit";
+import { adminLoginBodySchema } from "@/lib/schemas";
 
 const LOGIN_LIMIT = { capacity: 5, perHour: 20, prefix: "admin-login" };
 
@@ -24,9 +25,10 @@ export async function POST(request: Request) {
     return Response.json({ error: "invalid-body" }, { status: 400 });
   }
 
-  const pw = typeof (raw as { password?: unknown })?.password === "string"
-    ? (raw as { password: string }).password
-    : "";
+  const parsed = adminLoginBodySchema.safeParse(raw);
+  // Treat a parse failure as wrong password (don't leak whether the body
+  // was well-formed vs. the credentials were wrong).
+  const pw = parsed.success ? parsed.data.password : "";
   const token = adminLogin(pw);
   if (!token) {
     return Response.json(

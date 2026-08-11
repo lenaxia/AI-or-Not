@@ -16,3 +16,7 @@ export const submitScoreBodySchema = z.object({
   gameToken: z.string().min(1),
 });
 
+export const adminLoginBodySchema = z.object({
+  password: z.string().min(1),
+});
+

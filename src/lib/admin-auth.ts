@@ -1,6 +1,6 @@
 import "server-only";
 import { timingSafeEqual } from "node:crypto";
-import { sign, verify } from "./crypto";
+import { sign, verify, hmacHex } from "./crypto";
 
 /**
  * Minimal admin auth for a fun project. Single shared password via env var.
@@ -11,6 +11,8 @@ const COOKIE_NAME = "aionot_admin";
 const SESSION_TTL_MS = 8 * 60 * 60 * 1000; // 8h
 
 interface SessionPayload {
+  /** Discriminator: prevents round/game tokens (which share the HMAC key) from validating as admin sessions. */
+  kind: "admin";
   admin: true;
   exp: number;
 }
@@ -25,10 +27,16 @@ export function adminEnabled(): boolean {
   return password() !== undefined;
 }
 
+/**
+ * Constant-time password comparison. Both sides are HMAC'd first so the
+ * comparison is over equal-length digests — sidesteps the timing leak
+ * `timingSafeEqual` has on unequal-length inputs.
+ */
 function safeEqual(a: string, b: string): boolean {
-  const ab = Buffer.from(a);
-  const bb = Buffer.from(b);
-  if (ab.length !== bb.length) return false;
+  const ah = hmacHex(a);
+  const bh = hmacHex(b);
+  const ab = Buffer.from(ah);
+  const bb = Buffer.from(bh);
   return timingSafeEqual(ab, bb);
 }
 
@@ -37,15 +45,34 @@ export function adminLogin(pw: string): string | null {
   const expected = password();
   if (!expected) return null;
   if (!safeEqual(pw, expected)) return null;
-  return sign<SessionPayload>({ admin: true, exp: Date.now() + SESSION_TTL_MS });
+  return sign<SessionPayload>({
+    kind: "admin",
+    admin: true,
+    exp: Date.now() + SESSION_TTL_MS,
+  });
 }
 
-/** True if the cookie value is a valid, unexpired admin session token. */
-export function adminVerify(cookieValue: string | null | undefined): boolean {
+/**
+ * True if the cookie value is a valid, unexpired admin session token.
+ *
+ * Validates the PAYLOAD SHAPE, not just the HMAC signature — round tokens
+ * and game tokens are signed by the same `sign()` with the same
+ * `ROA_SECRET`, so signature alone is not a sufficient guarantee. The
+ * `kind: "admin"` discriminator + explicit `typeof exp === "number"` check
+ * prevent any non-admin token from passing (a non-admin payload either
+ * lacks `kind`, has a different `kind`, or lacks a numeric `exp`).
+ */
+export function adminVerify(
+  cookieValue: string | null | undefined,
+): boolean {
   if (!cookieValue) return false;
   const payload = verify<SessionPayload>(cookieValue);
   if (!payload) return false;
-  if (payload.exp <= Date.now()) return false;
+  if (payload.kind !== "admin") return false;
+  if (payload.admin !== true) return false;
+  if (typeof payload.exp !== "number" || payload.exp <= Date.now()) {
+    return false;
+  }
   return true;
 }
 

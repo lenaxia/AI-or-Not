@@ -10,7 +10,7 @@ import * as schema from "@/db/schema";
 const mem = createClient({ url: ":memory:" });
 const memDb = drizzle(mem, { schema });
 
-vi.mock("@/db", () => ({ db: memDb }));
+vi.mock("@/db", () => ({ db: memDb, ensureSchema: async () => {} }));
 
 // Mock the S3 module: we control list + get entirely from the test.
 const s3State: Record<string, { bytes: Buffer; etag: string }[]> = {};
