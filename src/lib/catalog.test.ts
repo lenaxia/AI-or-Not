@@ -6,9 +6,10 @@ import { createClient } from "@libsql/client";
 import { drizzle } from "drizzle-orm/libsql";
 import * as schema from "@/db/schema";
 
-// --- in-memory DB shared by all tests in this file ------------------------
-// Plain :memory: is per-connection in libsql; shared cache gives all
-// connections (drizzle's batch path, the test's direct client) the same DB.
+// --- shared-cache in-memory DB --------------------------------------------
+// Use `file::memory:?cache=shared` so any connection (including drizzle's
+// batch/transaction path) sees the same DB. Plain `:memory:` is per-
+// connection in libsql and silently breaks transactional code.
 const mem = createClient({ url: "file::memory:?cache=shared" });
 const memDb = drizzle(mem, { schema });
 

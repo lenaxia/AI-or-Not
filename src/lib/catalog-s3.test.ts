@@ -6,8 +6,9 @@ import { createClient } from "@libsql/client";
 import { drizzle } from "drizzle-orm/libsql";
 import * as schema from "@/db/schema";
 
-// --- in-memory DB shared by all tests in this file ------------------------
-const mem = createClient({ url: ":memory:" });
+// --- shared-cache in-memory DB --------------------------------------------
+// See note in catalog.test.ts: plain `:memory:` is per-connection.
+const mem = createClient({ url: "file::memory:?cache=shared" });
 const memDb = drizzle(mem, { schema });
 
 vi.mock("@/db", () => ({ db: memDb, ensureSchema: async () => {} }));

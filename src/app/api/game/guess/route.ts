@@ -2,9 +2,20 @@ import { guessBodySchema } from "@/lib/schemas";
 import { decodeToken } from "@/lib/game";
 import { recordGuess } from "@/lib/game-store";
 import { rateLimit, getClientIp } from "@/lib/rate-limit";
+import { recordAppearance, imageFooledPlayer } from "@/lib/elo";
 import type { GuessResponse } from "@/lib/types";
 
 const GUESS_LIMIT = { capacity: 30, perHour: 200, prefix: "guess" };
+
+/** Derive each side's true label from the round truth (which sides are AI). */
+function labelForSide(
+  truth: "left" | "right" | "both" | "none",
+  side: "left" | "right",
+): "ai" | "real" {
+  if (truth === "both") return "ai";
+  if (truth === "none") return "real";
+  return truth === side ? "ai" : "real";
+}
 
 export async function POST(request: Request) {
   const ip = getClientIp(request);
@@ -44,6 +55,17 @@ export async function POST(request: Request) {
       { status: 400 },
     );
   }
+
+  // Update ELO for both images in the round. Fire-and-forget: a failure here
+  // must never break the guess response. Each update is a single atomic SQL
+  // statement (no RMW race — see elo.ts).
+  const guess = parsed.data.guess;
+  const leftLabel = labelForSide(payload.t, "left");
+  const rightLabel = labelForSide(payload.t, "right");
+  Promise.allSettled([
+    recordAppearance(payload.l, imageFooledPlayer(leftLabel, "left", guess)),
+    recordAppearance(payload.r, imageFooledPlayer(rightLabel, "right", guess)),
+  ]).catch(() => {});
 
   const result: GuessResponse = {
     correct: isCorrect,
