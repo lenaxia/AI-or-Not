@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.3](https://github.com/lenaxia/AI-or-Not/compare/v0.2.2...v0.2.3) (2026-08-11)
+
+
+### Bug Fixes
+
+* **docker:** stop ignoring drizzle/ migrations directory ([9d2f888](https://github.com/lenaxia/AI-or-Not/commit/9d2f8886854cf194234459347e12ada3dbf637b8))
+
 ## [0.2.2](https://github.com/lenaxia/AI-or-Not/compare/v0.2.1...v0.2.2) (2026-08-11)
 
 
