@@ -5,6 +5,7 @@ import { db, ensureSchema } from "@/db";
 import { images, type ImageRow } from "@/db/schema";
 import type { CatalogEntry, Label } from "./types";
 import { sha1Hex, imageIdFromSha1 } from "./image-hash";
+import { listS3Images, getS3Object, s3Locator, s3Enabled } from "./s3";
 
 function imagesDir(): string {
   return process.env.ROA_IMAGES_DIR?.trim() || path.join(process.cwd(), "images");
@@ -228,6 +229,121 @@ export async function reindexFromFs(): Promise<{
 
   await reloadCache();
   return { added, duplicates };
+}
+
+/**
+ * Scan the configured S3 bucket (ROA_S3_BUCKET) under ROA_S3_PREFIX_AI and
+ * ROA_S3_PREFIX_REAL and upsert into the `images` table. Same dedup rules as
+ * reindexFromFs: a sha1 already in the DB (from any source) is a no-op; a
+ * sha1 seen twice within this run counts as a duplicate. Idempotent.
+ *
+ * Cost is dominated by GetObject (to hash). For large buckets this is slow;
+ * run it from a script, not the admin button — see design doc stress note #4.
+ */
+export async function reindexFromS3(): Promise<{
+  added: number;
+  duplicates: number;
+  skipped: number;
+}> {
+  if (!s3Enabled()) return { added: 0, duplicates: 0, skipped: 0 };
+
+  const bucket = process.env.ROA_S3_BUCKET!.trim();
+  const aiPrefix = process.env.ROA_S3_PREFIX_AI?.trim() || "ai/";
+  const realPrefix = process.env.ROA_S3_PREFIX_REAL?.trim() || "real/";
+
+  const existing = await db.select({ sha1: images.sha1 }).from(images);
+  const alreadyIndexed = new Set(existing.map((r) => r.sha1));
+  const seenThisRun = new Set<string>();
+
+  let added = 0;
+  let duplicates = 0;
+  let skipped = 0;
+
+  const targets: Array<[Label, string]> = [
+    ["ai", aiPrefix],
+    ["real", realPrefix],
+  ];
+
+  for (const [label, prefix] of targets) {
+    const objects = await listS3Images(prefix);
+    for (const obj of objects) {
+      // ETag fast-path: for single-part uploads, ETag = MD5 of content. We
+      // still SHA1 the bytes (cheap, dedup key is SHA1 by contract), but we
+      // could use ETag as a prefilter. We hash all objects here for
+      // correctness — reindex isn't hot.
+      let bytes: Buffer;
+      try {
+        bytes = await getS3Object(obj.key);
+      } catch (err) {
+        skipped++;
+        console.warn(`[catalog] s3 get failed for ${obj.key}:`, err);
+        continue;
+      }
+      const sha1 = sha1Hex(bytes);
+      if (alreadyIndexed.has(sha1)) continue;
+      if (seenThisRun.has(sha1)) {
+        duplicates++;
+        continue;
+      }
+      const now = Date.now();
+      try {
+        await db.insert(images).values({
+          id: imageIdFromSha1(sha1),
+          sha1,
+          label,
+          source: "s3",
+          locator: s3Locator(bucket, obj.key),
+          ext: obj.ext,
+          mime: obj.mime,
+          elo: 1000,
+          appearances: 0,
+          fools: 0,
+          retired: false,
+          indexedAt: now,
+          updatedAt: now,
+        });
+      } catch {
+        // Race with a concurrent indexer: treat UNIQUE collision as no-op.
+        skipped++;
+        continue;
+      }
+      seenThisRun.add(sha1);
+      added++;
+    }
+  }
+
+  await reloadCache();
+  return { added, duplicates, skipped };
+}
+
+/** Combined reindex: FS then S3 (whichever sources are configured). */
+export async function reindexAll(): Promise<{
+  added: number;
+  duplicates: number;
+  skipped: number;
+}> {
+  const fsRes = await reindexFromFs();
+  const s3Res = await reindexFromS3();
+  return {
+    added: fsRes.added + s3Res.added,
+    duplicates: fsRes.duplicates + s3Res.duplicates,
+    skipped: s3Res.skipped,
+  };
+}
+
+/**
+ * Fetch the raw bytes for a catalog entry, transparently handling fs vs s3.
+ * Used by the image-proxy route handler.
+ */
+export async function readImageData(entry: CatalogEntry): Promise<Buffer> {
+  if (entry.source === "fs") {
+    return fs.readFile(entry.locator);
+  }
+  const { parseLocator } = await import("./s3");
+  const { bucket, key } = parseLocator(entry.locator);
+  // Reuse the configured client; bucket in locator is informational.
+  void bucket;
+  return getS3Object(key);
 }
 
 /** Test-only: reset the in-memory cache + FS-attempt flag. */

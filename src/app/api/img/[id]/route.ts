@@ -1,5 +1,4 @@
-import fs from "node:fs/promises";
-import { getEntry } from "@/lib/catalog";
+import { getEntry, readImageData } from "@/lib/catalog";
 
 export async function GET(
   _request: Request,
@@ -13,7 +12,7 @@ export async function GET(
 
   let data: Buffer;
   try {
-    data = await fs.readFile(entry.absPath);
+    data = await readImageData(entry);
   } catch {
     return new Response("Not found", { status: 404 });
   }
