@@ -1,14 +1,14 @@
-# Build & publish the Docker image when a version release is published.
+# Build & publish the Docker image.
 #
 # Triggers:
-#   - release published  (created automatically by release-please)
-#   - workflow_dispatch  (manual rebuild of HEAD as :main)
+#   - workflow_call      (from release.yml when release-please creates a release)
+#   - workflow_dispatch  (manual rebuild of HEAD or arbitrary ref)
 #
-# Why `release` not `push: tags:`: release-please creates the release using
-# GITHUB_TOKEN. Per GitHub's anti-recursion rule, events triggered by
-# GITHUB_TOKEN do not fire other workflows — so the tag push from
-# release-please does NOT trigger this workflow. The `release` event fires
-# regardless of which token created the release, which is what we need.
+# Why not push: tags / release: published triggers: release-please creates
+# both using GITHUB_TOKEN. Per GitHub's anti-recursion rule, events
+# triggered by GITHUB_TOKEN do not fire other workflows — so neither the
+# tag push nor the release-published event reaches this workflow. Calling
+# it directly from release.yml (workflow_call) bypasses the rule.
 #
 # Pushes to ghcr.io/lenaxia/ai-or-not (GHCR lowercases org/repo) with tags:
 #   :vX.Y.Z       (exact version, immutable)
@@ -20,8 +20,13 @@
 name: Publish Docker image
 
 on:
-  release:
-    types: [published]
+  workflow_call:
+    inputs:
+      ref:
+        description: "Tag or branch to build (defaults to default branch)"
+        required: false
+        type: string
+        default: ""
   workflow_dispatch:
     inputs:
       ref:
@@ -36,20 +41,21 @@ permissions:
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
-    # Skip draft releases and prereleases (we only publish GA semver).
-    if: ${{ github.event_name != 'release' || github.event.release.draft == false }}
     steps:
       - name: Resolve ref to build
         id: ref
         run: |
-          if [ "${{ github.event_name }}" = "release" ]; then
-            echo "ref=${{ github.event.release.tag_name }}" >> "$GITHUB_OUTPUT"
-            echo "is_release=true" >> "$GITHUB_OUTPUT"
-          elif [ -n "${{ github.event.inputs.ref }}" ]; then
-            echo "ref=${{ github.event.inputs.ref }}" >> "$GITHUB_OUTPUT"
-            echo "is_release=false" >> "$GITHUB_OUTPUT"
+          if [ -n "${{ inputs.ref }}" ]; then
+            REF="${{ inputs.ref }}"
+            echo "ref=${REF}" >> "$GITHUB_OUTPUT"
           else
-            echo "ref=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
+            REF="${{ github.ref_name }}"
+            echo "ref=${REF}" >> "$GITHUB_OUTPUT"
+          fi
+          # A release tag looks like vX.Y.Z — flag it for the :latest tag.
+          if [[ "$REF" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "is_release=true" >> "$GITHUB_OUTPUT"
+          else
             echo "is_release=false" >> "$GITHUB_OUTPUT"
           fi
 
@@ -76,8 +82,8 @@ jobs:
         uses: docker/metadata-action@v6
         with:
           images: ghcr.io/${{ github.repository }}
-          # On release events, use the release's tag_name. On workflow_dispatch,
-          # default to :main (manual rebuild) unless a ref input was given.
+          # On release tags, use the tag name. Otherwise default to :main
+          # (manual rebuild of an unreleased branch).
           tags: |
             ${{ steps.ref.outputs.is_release == 'true' && 'type=match,pattern=v(.*),group=1' || '' }}
             ${{ steps.ref.outputs.is_release == 'true' && 'type=match,pattern=v(\d.\d.\d),group=1' || '' }}

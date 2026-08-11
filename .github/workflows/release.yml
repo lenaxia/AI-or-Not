@@ -6,8 +6,16 @@
 #      it opens/updates a "release PR" that bumps package.json + CHANGELOG.md.
 #   2. Merging the release PR tags the commit (vX.Y.Z) and creates a GitHub
 #      Release.
-#   3. The tag push triggers docker-publish.yml, which builds and pushes the
-#      image to GHCR.
+#   3. THIS workflow then calls docker-publish.yml as a downstream reusable
+#      workflow to build and push the image to GHCR.
+#
+# Why chain via workflow_call (not push: tags trigger on docker-publish):
+# release-please creates the release using GITHUB_TOKEN. Per GitHub's
+# anti-recursion rule, events triggered by GITHUB_TOKEN do not fire other
+# workflows — so neither the tag push nor the release-published event from
+# release-please triggers docker-publish.yml. Calling it directly from this
+# workflow bypasses that restriction (same GITHUB_TOKEN, but same-workflow
+# job-to-job calls are not subject to the rule).
 #
 # Bump level is inferred from commit prefixes:
 #   feat:              → minor (v1.2.0)
@@ -23,16 +31,22 @@ name: Release
 on:
   push:
     branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: write
   pull-requests: write
+  packages: write
 
 jobs:
   release-please:
     runs-on: ubuntu-latest
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
     steps:
-      - uses: googleapis/release-please-action@v5
+      - id: release
+        uses: googleapis/release-please-action@v5
         with:
           release-type: node
           # package.json is the source of truth for the version.
@@ -41,3 +55,13 @@ jobs:
           # (release-please had proposed v1.0.0); this manifest tells it the
           # current released version so future bumps compute from 0.1.0.
           manifest-file: .release-please-manifest.json
+
+  # Called directly (not via tag/release event) to bypass GitHub's
+  # anti-recursion rule on GITHUB_TOKEN-triggered events.
+  publish-docker:
+    needs: release-please
+    if: ${{ needs.release-please.outputs.release_created == 'true' }}
+    uses: ./.github/workflows/docker-publish.yml
+    with:
+      ref: ${{ needs.release-please.outputs.tag_name }}
+    secrets: inherit
