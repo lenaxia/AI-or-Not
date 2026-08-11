@@ -90,11 +90,13 @@ export async function reloadCache(): Promise<void> {
  * successfully completed a FS scan, scan `images/{ai,real}/` exactly as the
  * old catalog did, so existing local deploys keep working with zero setup.
  *
- * `bootFsScanDone` is only set on success — a transient FS failure
- * (permissions, mis-mounted volume) leaves it false so the next call retries.
- * Narrow race: a second request arriving while the first scan is mid-flight
- * awaits the pre-reload `catalogPromise` and may briefly see an empty
- * catalog. Self-heals on the next call (which hits the populated cache).
+ * Retry semantics: `bootFsScanDone` is only set on success, AND on failure
+ * we null out `catalogPromise` so the next caller re-enters this block
+ * (otherwise the resolved-but-empty promise would short-circuit the guard
+ * and the catalog would stay empty until process restart). Narrow race: a
+ * second request arriving while the first scan is mid-flight awaits the
+ * pre-reload `catalogPromise` and may briefly see an empty catalog.
+ * Self-heals on the next call.
  */
 export async function getCatalog(): Promise<Catalog> {
   if (!catalogPromise) {
@@ -106,10 +108,14 @@ export async function getCatalog(): Promise<Catalog> {
         bootFsScanDone = true;
       } catch (err) {
         console.warn("[catalog] first-boot FS migration failed:", err);
+        // Null the cache so the next caller re-enters this block and retries.
+        // Without this, the resolved-but-empty catalogPromise would short-
+        // circuit the outer `if (!catalogPromise)` guard.
+        catalogPromise = null;
       }
     }
   }
-  return catalogPromise;
+  return catalogPromise!;
 }
 
 export async function getEntry(
@@ -230,7 +236,6 @@ export async function reindexFromFs(): Promise<{
   return { added, duplicates };
 }
 
-/** Test-only: reset the in-memory cache + FS-attempt flag. */
 /** Test-only: reset the in-memory cache + first-boot scan flag. */
 export function __resetCatalogForTests(): void {
   catalogPromise = null;

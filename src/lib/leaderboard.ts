@@ -1,7 +1,6 @@
 import "server-only";
 import { eq } from "drizzle-orm";
-import { db } from "@/db";
-import { ensureSchema } from "@/db";
+import { db, ensureSchema } from "@/db";
 import { scores } from "@/db/schema";
 import type {
   Bucket,
