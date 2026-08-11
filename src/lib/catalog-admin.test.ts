@@ -9,7 +9,7 @@ import * as schema from "@/db/schema";
 const mem = createClient({ url: "file::memory:?cache=shared" });
 const memDb = drizzle(mem, { schema });
 
-vi.mock("@/db", () => ({ db: memDb }));
+vi.mock("@/db", () => ({ db: memDb, ensureSchema: async () => {} }));
 
 let tmpDir: string;
 
@@ -114,7 +114,7 @@ describe("catalog: setImageRetired / deleteImage", () => {
 });
 
 describe("catalog: listImages", () => {
-  it("paginates and sorts by indexedAt desc", async () => {
+  it("paginates across the full set", async () => {
     const { uploadImage, listImages } = await import("./catalog");
     for (let i = 0; i < 5; i++) {
       await uploadImage("ai", `a${i}.jpg`, JPG(`a${i}`));
@@ -125,6 +125,9 @@ describe("catalog: listImages", () => {
     expect(page1.rows).toHaveLength(4);
     const page3 = await listImages({ page: 3, pageSize: 4 });
     expect(page3.rows).toHaveLength(2);
+    // No overlap between pages.
+    const page1Ids = new Set(page1.rows.map((r) => r.id));
+    for (const r of page3.rows) expect(page1Ids.has(r.id)).toBe(false);
   });
 
   it("filters by label", async () => {

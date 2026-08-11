@@ -432,17 +432,6 @@ export async function readImageData(entry: CatalogEntry): Promise<Buffer> {
   return getS3Object(key);
 }
 
-const SUPPORTED_UPLOAD_EXT: Record<string, string> = {
-  ".jpg": "image/jpeg",
-  ".jpeg": "image/jpeg",
-  ".png": "image/png",
-  ".webp": "image/webp",
-  ".gif": "image/gif",
-  ".avif": "image/avif",
-  ".bmp": "image/bmp",
-  ".svg": "image/svg+xml",
-};
-
 /** 25 MB per-file upload cap — protects the route from trivial OOM. */
 export const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
 
@@ -461,7 +450,7 @@ export async function uploadImage(
   { ok: true; id: string; sha1: string; duplicate: boolean } | { ok: false; error: string }
 > {
   const ext = path.extname(filename).toLowerCase();
-  const mime = SUPPORTED_UPLOAD_EXT[ext];
+  const mime = IMAGE_EXT[ext];
   if (!mime) return { ok: false, error: `unsupported extension: ${ext}` };
   if (bytes.byteLength > MAX_UPLOAD_BYTES) {
     return { ok: false, error: `file exceeds ${MAX_UPLOAD_BYTES} byte cap` };
@@ -487,21 +476,35 @@ export async function uploadImage(
   await fs.writeFile(absPath, bytes);
 
   const now = Date.now();
-  await db.insert(images).values({
-    id,
-    sha1,
-    label,
-    source: "fs",
-    locator: absPath,
-    ext,
-    mime,
-    elo: 1000,
-    appearances: 0,
-    fools: 0,
-    retired: false,
-    indexedAt: now,
-    updatedAt: now,
-  });
+  try {
+    await db.insert(images).values({
+      id,
+      sha1,
+      label,
+      source: "fs",
+      locator: absPath,
+      ext,
+      mime,
+      elo: 1000,
+      appearances: 0,
+      fools: 0,
+      retired: false,
+      indexedAt: now,
+      updatedAt: now,
+    });
+  } catch (err) {
+    // Race: a concurrent upload of identical content already inserted. Clean
+    // up the file we just wrote (it's a duplicate) and report as a dup so
+    // the operator sees consistent behavior. Only swallow UNIQUE-constraint
+    // failures; rethrow real DB errors.
+    const code = (err as { code?: string }).code;
+    const msg = (err as { message?: string }).message ?? "";
+    if (code === "SQLITE_CONSTRAINT" || /UNIQUE/i.test(msg)) {
+      await fs.unlink(absPath).catch(() => {});
+      return { ok: true, id, sha1, duplicate: true };
+    }
+    throw err;
+  }
   await reloadCache();
   return { ok: true, id, sha1, duplicate: false };
 }
@@ -516,14 +519,14 @@ export async function setImageRetired(
     .set({ retired, updatedAt: Date.now() })
     .where(eq(images.id, imageId));
   await reloadCache();
-  return (res as unknown as { rowsAffected?: number }).rowsAffected !== 0;
+  return ((res as unknown as { rowsAffected?: number }).rowsAffected ?? 0) > 0;
 }
 
 /** Hard-delete a row. Does NOT touch the underlying file/object. */
 export async function deleteImage(imageId: string): Promise<boolean> {
   const res = await db.delete(images).where(eq(images.id, imageId));
   await reloadCache();
-  return (res as unknown as { rowsAffected?: number }).rowsAffected !== 0;
+  return ((res as unknown as { rowsAffected?: number }).rowsAffected ?? 0) > 0;
 }
 
 /** Paginated listing for the admin gallery. */
