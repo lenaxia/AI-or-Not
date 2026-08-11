@@ -72,7 +72,7 @@ COPY --from=builder --chown=nextjs:nodejs /app/public ./public
 # Baked-in placeholder images (consumer replaces with real content).
 COPY --from=builder --chown=nextjs:nodejs /app/images ./images
 # Drizzle migrations — applied automatically on first DB access via
-# ensureSchema() in src/lib/leaderboard.ts (uses drizzle-orm migrator,
+# ensureSchema() in src/db/index.ts (uses drizzle-orm migrator,
 # which IS traced into the standalone bundle; no drizzle-kit needed).
 COPY --from=builder --chown=nextjs:nodejs /app/drizzle ./drizzle
 

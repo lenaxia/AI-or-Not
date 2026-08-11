@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import process from "node:process";
 
 /**
  * Integration test for the PR-#15 schema-gate fix. Does NOT mock @/db, so
@@ -12,7 +13,19 @@ import path from "node:path";
  * Each test gets a fresh module registry (vi.resetModules) so @/db picks up
  * the new ROA_DB_URL. Without that, the @/db client is cached across tests
  * and they'd all share one DB file.
+ *
+ * Note on the retry tests: they use fs.chmod(path, 0o000) to force a
+ * readFile failure. Vitest's ESM module mocking cannot reliably intercept
+ * `node:fs/promises` inside dynamically-imported modules (doMock is ignored
+ * after resetModules; hoisted vi.mock closes over state by value), so the
+ * chmod approach is the most reliable option. It is uid-sensitive: root
+ * bypasses Unix perms, so these tests are SKIPPED when running as root.
+ * The CI runner and the production Dockerfile both run as uid 1001, so
+ * the tests run in every environment that actually matters.
  */
+
+const isRoot = process.getuid?.() === 0;
+const retryDescribe = isRoot ? describe.skip : describe;
 
 let tmpDir: string;
 let prevDbUrl: string | undefined;
@@ -66,65 +79,67 @@ describe("catalog integration: schema gate", () => {
   });
 });
 
-describe("catalog integration: first-boot retry semantics", () => {
+retryDescribe("catalog integration: first-boot retry semantics", () => {
   // Regression for two review-round bugs:
   //  1. getCatalog() returned null on the failure path (the `!` hid it).
   //  2. Partial-scan failure orphaned rows because the retry gate was
   //     `byId.size === 0` — a partial scan left rows so retry never fired.
   // Both fixed: gate is now `!bootFsScanDone` (row-count independent), and
   // the catch returns the in-flight catalog to the failing caller.
+  //
+  // These tests use chmod 0o000 to force readFile failures, which root
+  // bypasses — the describe.skip wrapper at the top guards that.
 
   it("returns a valid (empty) Catalog on first-call scan failure, then retries", async () => {
     const aiDir = path.join(tmpDir!, "images", "ai");
     await fs.mkdir(aiDir, { recursive: true });
-    await fs.writeFile(path.join(aiDir, "a.jpg"), Buffer.from("FAKEJPEG:a"));
+    const file = path.join(aiDir, "a.jpg");
+    await fs.writeFile(file, Buffer.from("FAKEJPEG:a"));
 
-    const cat = await import("./catalog");
-    const { getCatalog, __resetCatalogForTests } = cat;
+    const { getCatalog, __resetCatalogForTests } = await import("./catalog");
     __resetCatalogForTests();
 
-    // Force the FS scan to throw on the first call by revoking read perm on
-    // the file. Restore before the retry so the second call succeeds.
-    await fs.chmod(path.join(aiDir, "a.jpg"), 0o000);
+    // Revoke read perm → first scan throws on readFile. Caller must get a
+    // valid (empty) Catalog, not null.
+    await fs.chmod(file, 0o000);
     const first = await getCatalog();
-    // Concern 1: first call must NOT be null — it returns the empty Catalog
-    // so callers degrade gracefully (e.g. 503 not-enough-images, not 500).
     expect(first).not.toBeNull();
     expect(first.byId.size).toBe(0);
 
-    // Restore and retry — the scan should now complete.
-    await fs.chmod(path.join(aiDir, "a.jpg"), 0o644);
+    // Restore and retry — scan completes.
+    await fs.chmod(file, 0o644);
     const second = await getCatalog();
     expect(second).not.toBeNull();
     expect(second.byId.size).toBe(1);
   });
 
   it("retries after a partial scan (already-inserted rows don't block the retry)", async () => {
-    // Two files in ai/. First scan will insert file 1 then throw on file 2.
-    // Retry must pick up file 2 — the gate is !bootFsScanDone, not row count.
+    // Two files in ai/. First scan will insert one then throw on the other.
+    // Retry must pick up the remainder — gate is !bootFsScanDone, not row
+    // count, so partial rows don't block the retry.
     const aiDir = path.join(tmpDir!, "images", "ai");
     await fs.mkdir(aiDir, { recursive: true });
-    await fs.writeFile(path.join(aiDir, "keep.jpg"), Buffer.from("FAKEJPEG:keep"));
-    await fs.writeFile(path.join(aiDir, "locked.jpg"), Buffer.from("FAKEJPEG:locked"));
+    const keep = path.join(aiDir, "keep.jpg");
+    const locked = path.join(aiDir, "locked.jpg");
+    await fs.writeFile(keep, Buffer.from("FAKEJPEG:keep"));
+    await fs.writeFile(locked, Buffer.from("FAKEJPEG:locked"));
 
-    const cat = await import("./catalog");
-    const { getCatalog, __resetCatalogForTests } = cat;
+    const { getCatalog, __resetCatalogForTests } = await import("./catalog");
     __resetCatalogForTests();
 
-    // Lock the second file → scan throws on it (whether before or after
-    // keep.jpg is processed depends on readdir order). Either way the scan
-    // doesn't complete, so bootFsScanDone stays false.
-    await fs.chmod(path.join(aiDir, "locked.jpg"), 0o000);
+    // Lock one file — readdir order is OS-dependent, so the scan throws on
+    // whichever file hits the locked path first. Either way bootFsScanDone
+    // stays false because the scan doesn't complete.
+    await fs.chmod(locked, 0o000);
     const first = await getCatalog();
-    // The returned catalog is the pre-scan snapshot (possibly empty, possibly
-    // partial). What matters: it's non-null and the caller degrades gracefully.
+    // Returned catalog is the pre-scan snapshot (possibly empty, possibly
+    // partial). What matters: non-null, graceful degradation.
     expect(first).not.toBeNull();
 
-    // Unlock and retry. !bootFsScanDone is still true (scan never completed),
-    // so the retry fires regardless of how many rows the partial scan left.
-    // reindexFromFs is idempotent — it skips already-indexed files and picks
-    // up the rest.
-    await fs.chmod(path.join(aiDir, "locked.jpg"), 0o644);
+    // Unlock and retry. !bootFsScanDone is still true, so the retry fires
+    // regardless of how many rows the partial scan left. reindexFromFs is
+    // idempotent — skips already-indexed files, picks up the rest.
+    await fs.chmod(locked, 0o644);
     const second = await getCatalog();
     expect(second.byId.size).toBe(2);
   });
