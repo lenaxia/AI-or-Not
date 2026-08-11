@@ -15,14 +15,7 @@ permissions:
 
 jobs:
   review:
-    # Skip bots — release-please creates PRs as github-actions[bot], which
-    # has no write access. The opencode action rejects non-write actors.
-    # Bot PRs are auto-generated version bumps that don't need AI review.
-    if: |
-      github.event.pull_request.user.login != 'renovate[bot]' &&
-      github.event.pull_request.user.login != 'github-actions[bot]' &&
-      github.event.pull_request.user.login != 'release-please[bot]' &&
-      github.event.pull_request.user.login != 'dependabot[bot]'
+    if: github.event.pull_request.user.login != 'renovate[bot]'
     uses: lenaxia/ai-workflows/.github/workflows/pr-review.yml@v0.2.7
     secrets: inherit
     with:
