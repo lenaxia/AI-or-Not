@@ -111,6 +111,47 @@ describe("catalog: filesystem migration", () => {
     expect(first.added).toBe(1);
     expect(second.added).toBe(0);
     expect(second.duplicates).toBe(0);
+    expect(second.removed).toBe(0);
+  });
+
+  it("removes DB rows for files deleted from disk", async () => {
+    const { reindexFromFs, getCounts } = await import("./catalog");
+    await seedDir("ai", [
+      { name: "keep.jpg", bytes: JPG("keep") },
+      { name: "gone.jpg", bytes: JPG("gone") },
+    ]);
+    await reindexFromFs();
+    expect(await getCounts()).toEqual({ ai: 2, real: 0 });
+    // Remove one file, reindex → its row should be gone.
+    await fs.unlink(path.join(tmpDir!, "ai", "gone.jpg"));
+    const res = await reindexFromFs();
+    expect(res.removed).toBe(1);
+    expect(await getCounts()).toEqual({ ai: 1, real: 0 });
+  });
+
+  it("does not remove S3-sourced rows during FS reindex", async () => {
+    const { reindexFromFs, getCounts } = await import("./catalog");
+    const { db } = await import("@/db");
+    // Insert a fake S3 row directly.
+    await db.insert(schema.images).values({
+      id: "s3fake",
+      sha1: "s3fake-sha1-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      label: "ai",
+      source: "s3",
+      locator: "fakebucket/ai/img.jpg",
+      ext: ".jpg",
+      mime: "image/jpeg",
+      elo: 1000,
+      appearances: 0,
+      fools: 0,
+      retired: false,
+      indexedAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+    await reindexFromFs();
+    const counts = await getCounts();
+    // The S3 row survives even though its locator isn't on the FS.
+    expect(counts.ai).toBe(1);
   });
 
   it("computes a stable id from content (independent of filename)", async () => {

@@ -72,7 +72,7 @@ describe("catalog: reindexFromS3", () => {
   it("is a no-op when S3 is not configured", async () => {
     const { reindexFromS3 } = await import("./catalog");
     const res = await reindexFromS3();
-    expect(res).toEqual({ added: 0, duplicates: 0, skipped: 0 });
+    expect(res).toEqual({ added: 0, duplicates: 0, skipped: 0, removed: 0 });
   });
 
   it("indexes images from the configured S3 prefixes", async () => {
@@ -133,6 +133,25 @@ describe("catalog: reindexFromS3", () => {
     expect(first.added).toBe(1);
     expect(second.added).toBe(0);
     expect(second.duplicates).toBe(0);
+  });
+
+  it("removes DB rows for objects deleted from S3", async () => {
+    process.env.ROA_S3_BUCKET = "test-bucket";
+    process.env.ROA_S3_PREFIX_AI = "ai/";
+    s3State["ai/"] = [
+      { bytes: JPG("keep"), etag: "etag-keep" },
+      { bytes: JPG("gone"), etag: "etag-gone" },
+    ];
+
+    const { reindexFromS3, getCounts } = await import("./catalog");
+    await reindexFromS3();
+    expect(await getCounts()).toEqual({ ai: 2, real: 0 });
+
+    // Remove one object, reindex → its row should be gone.
+    s3State["ai/"] = [{ bytes: JPG("keep"), etag: "etag-keep" }];
+    const res = await reindexFromS3();
+    expect(res.removed).toBe(1);
+    expect(await getCounts()).toEqual({ ai: 1, real: 0 });
   });
 
   it("skips objects whose GET fails (counts as skipped, not added)", async () => {
