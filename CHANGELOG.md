@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.1](https://github.com/lenaxia/AI-or-Not/compare/v0.2.0...v0.2.1) (2026-08-11)
+
+
+### Bug Fixes
+
+* **docker:** regenerate package-lock.json with vitest deps ([3b1653d](https://github.com/lenaxia/AI-or-Not/commit/3b1653d6c9639f7789924d6db12fc3b086f74ed5))
+
 ## [0.2.0](https://github.com/lenaxia/AI-or-Not/compare/v0.1.0...v0.2.0) (2026-08-11)
 
 
