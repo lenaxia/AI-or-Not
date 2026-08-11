@@ -2,6 +2,7 @@ import "server-only";
 import fs from "node:fs";
 import path from "node:path";
 import { drizzle } from "drizzle-orm/libsql";
+import { migrate } from "drizzle-orm/libsql/migrator";
 import { createClient } from "@libsql/client";
 import * as schema from "./schema";
 
@@ -24,3 +25,25 @@ const client = createClient({
 });
 
 export const db = drizzle(client, { schema });
+
+/**
+ * Apply pending Drizzle migrations on first DB access. Uses drizzle-orm's
+ * built-in migrator (traced into the standalone bundle — no drizzle-kit
+ * needed at runtime). Idempotent: tracks applied migrations in
+ * __drizzle_migrations. In dev the migrations live at ./drizzle; in the
+ * Docker image they're copied to /app/drizzle (CWD is /app).
+ *
+ * Owned by the DB module so every code path that touches the schema
+ * (catalog, leaderboard, admin) hits the same gate — not just the
+ * leaderboard routes.
+ */
+let ensurePromise: Promise<void> | null = null;
+
+export function ensureSchema(): Promise<void> {
+  if (!ensurePromise) {
+    ensurePromise = migrate(db, {
+      migrationsFolder: path.join(process.cwd(), "drizzle"),
+    }).then(() => undefined);
+  }
+  return ensurePromise;
+}
