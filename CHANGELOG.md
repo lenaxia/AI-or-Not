@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.2](https://github.com/lenaxia/AI-or-Not/compare/v0.2.1...v0.2.2) (2026-08-11)
+
+
+### Bug Fixes
+
+* **docker:** use npm install instead of npm ci ([6e74f0d](https://github.com/lenaxia/AI-or-Not/commit/6e74f0da75f9833c6d39f6b3cbd7934841be32cd))
+
 ## [0.2.1](https://github.com/lenaxia/AI-or-Not/compare/v0.2.0...v0.2.1) (2026-08-11)
 
 
