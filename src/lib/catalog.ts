@@ -566,7 +566,6 @@ export async function listByElo(): Promise<{
   };
 }
 
-/** Test-only: reset the in-memory cache + FS-attempt flag. */
 /** Test-only: reset the in-memory cache + first-boot scan flag. */
 export function __resetCatalogForTests(): void {
   catalogPromise = null;

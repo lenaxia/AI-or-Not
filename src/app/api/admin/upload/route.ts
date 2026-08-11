@@ -1,7 +1,9 @@
+import { z } from "zod";
 import { requireAdmin } from "@/lib/admin-auth";
 import { uploadImage, MAX_UPLOAD_BYTES } from "@/lib/catalog";
 
 const MAX_FILES = 20;
+const labelSchema = z.enum(["ai", "real"]);
 
 export async function POST(request: Request) {
   const guard = requireAdmin(request);
@@ -14,11 +16,11 @@ export async function POST(request: Request) {
     return Response.json({ error: "invalid-form-data" }, { status: 400 });
   }
 
-  const labelRaw = form.get("label");
-  if (labelRaw !== "ai" && labelRaw !== "real") {
+  const labelParsed = labelSchema.safeParse(form.get("label"));
+  if (!labelParsed.success) {
     return Response.json({ error: "invalid-label" }, { status: 400 });
   }
-  const label = labelRaw;
+  const label = labelParsed.data;
 
   const files = form.getAll("files").filter((f): f is File => f instanceof File);
   if (files.length === 0) {
