@@ -35,33 +35,26 @@ export interface BuiltRound {
   truth: Verdict;
 }
 
+/**
+ * Map a round truth (which sides are AI) to a single side's true label.
+ * Shared between buildRound and the guess-route ELO wiring so there's one
+ * source of truth for the Verdict→label mapping.
+ */
+export function labelForSide(
+  truth: Verdict,
+  side: "left" | "right",
+): "ai" | "real" {
+  if (truth === "both") return "ai";
+  if (truth === "none") return "real";
+  return truth === side ? "ai" : "real";
+}
+
 export async function buildRound(mode: Mode): Promise<BuiltRound | null> {
   const truth = rollTruth();
 
-  let leftLabel: "ai" | "real";
-  let rightLabel: "ai" | "real";
-  let needDistinct = false;
-
-  switch (truth) {
-    case "left":
-      leftLabel = "ai";
-      rightLabel = "real";
-      break;
-    case "right":
-      leftLabel = "real";
-      rightLabel = "ai";
-      break;
-    case "both":
-      leftLabel = "ai";
-      rightLabel = "ai";
-      needDistinct = true;
-      break;
-    case "none":
-      leftLabel = "real";
-      rightLabel = "real";
-      needDistinct = true;
-      break;
-  }
+  const leftLabel = labelForSide(truth, "left");
+  const rightLabel = labelForSide(truth, "right");
+  const needDistinct = truth === "both" || truth === "none";
 
   const left = await pickByLabel(leftLabel);
   if (!left) return null;

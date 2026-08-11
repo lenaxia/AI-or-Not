@@ -1,6 +1,7 @@
 import "server-only";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { eq } from "drizzle-orm";
 import { db, ensureSchema } from "@/db";
 import { images, type ImageRow } from "@/db/schema";
 import type { CatalogEntry, Label } from "./types";
@@ -122,6 +123,37 @@ export async function getEntry(
   // deliberately do NOT do an incremental stash here — earlier code added
   // missed rows to byId but not byLabel, leaving the two maps inconsistent.
   return cat.byId.get(id);
+}
+
+/**
+ * Refresh a single entry in the in-memory cache after a write that touches
+ * only one row (e.g. recordAppearance updating elo/appearances/fools).
+ * Cheaper than reloadCache() — one SELECT, two map updates, kept in sync.
+ *
+ * If the row no longer exists, drops it from both maps. No-op if the cache
+ * hasn't been populated yet (getCatalog() owns first-load).
+ */
+export async function refreshEntryInCache(id: string): Promise<void> {
+  if (!catalogPromise) return;
+  const cat = await catalogPromise;
+  const rows = await db
+    .select()
+    .from(images)
+    .where(eq(images.id, id))
+    .limit(1);
+  const old = cat.byId.get(id);
+  if (old) {
+    const arr = cat.byLabel[old.label];
+    const i = arr.indexOf(old);
+    if (i >= 0) arr.splice(i, 1);
+  }
+  if (rows.length > 0) {
+    const e = toEntry(rows[0]!);
+    cat.byId.set(id, e);
+    cat.byLabel[e.label].push(e);
+  } else {
+    cat.byId.delete(id);
+  }
 }
 
 export async function getCounts(): Promise<{ ai: number; real: number }> {

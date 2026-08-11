@@ -2,6 +2,7 @@ import "server-only";
 import { sql } from "drizzle-orm";
 import { db } from "@/db";
 import { images } from "@/db/schema";
+import { refreshEntryInCache } from "./catalog";
 
 /**
  * Per-image ELO. The image "wins" an appearance by fooling the player; the
@@ -64,6 +65,12 @@ export function imageFooledPlayer(
  *
  * The expression: `MAX(100, elo + 32 * (actual - expected(elo)))` where
  * `expected(elo) = 1 / (1 + 10^((1000 - elo) / 400))`.
+ *
+ * After the write, the in-memory catalog entry is refreshed so the new elo
+ * is visible to pickByLabel() immediately — without this, an image that
+ * drops below ROA_ELO_RETIRE_BELOW keeps being served from stale cache
+ * until a manual reindex. The refresh is one extra SELECT, far cheaper
+ * than the full reloadCache().
  */
 export async function recordAppearance(
   imageId: string,
@@ -79,6 +86,7 @@ export async function recordAppearance(
       updatedAt: Date.now(),
     })
     .where(sql`${images.id} = ${imageId}`);
+  await refreshEntryInCache(imageId);
 }
 
 export const _ELO_CONSTANTS = { K_FACTOR, POPULATION_RATING, ELO_FLOOR };
