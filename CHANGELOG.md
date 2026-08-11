@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.5](https://github.com/lenaxia/AI-or-Not/compare/v0.2.4...v0.2.5) (2026-08-11)
+
+
+### Bug Fixes
+
+* **ci:** chain docker-publish via workflow_call (bypass GITHUB_TOKEN recursion) ([b51f8a7](https://github.com/lenaxia/AI-or-Not/commit/b51f8a7d579bfa0652bec114639d80ea15196fdd))
+
 ## [0.2.4](https://github.com/lenaxia/AI-or-Not/compare/v0.2.3...v0.2.4) (2026-08-11)
 
 
