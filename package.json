@@ -2,6 +2,10 @@
   "name": "ai-or-not",
   "version": "0.2.3",
   "private": true,
+  "engines": {
+    "node": ">=22",
+    "npm": ">=11"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",

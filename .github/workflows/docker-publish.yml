@@ -1,8 +1,14 @@
-# Build & publish the Docker image when a version tag is cut by release.yml.
+# Build & publish the Docker image when a version release is published.
 #
 # Triggers:
-#   - push tag v*.*.*    (created automatically by release-please)
+#   - release published  (created automatically by release-please)
 #   - workflow_dispatch  (manual rebuild of HEAD as :main)
+#
+# Why `release` not `push: tags:`: release-please creates the release using
+# GITHUB_TOKEN. Per GitHub's anti-recursion rule, events triggered by
+# GITHUB_TOKEN do not fire other workflows — so the tag push from
+# release-please does NOT trigger this workflow. The `release` event fires
+# regardless of which token created the release, which is what we need.
 #
 # Pushes to ghcr.io/lenaxia/ai-or-not (GHCR lowercases org/repo) with tags:
 #   :vX.Y.Z       (exact version, immutable)
@@ -14,10 +20,14 @@
 name: Publish Docker image
 
 on:
-  push:
-    tags:
-      - "v*.*.*"
+  release:
+    types: [published]
   workflow_dispatch:
+    inputs:
+      ref:
+        description: "Tag or branch to build (defaults to default branch)"
+        required: false
+        default: ""
 
 permissions:
   contents: read
@@ -26,9 +36,27 @@ permissions:
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
+    # Skip draft releases and prereleases (we only publish GA semver).
+    if: ${{ github.event_name != 'release' || github.event.release.draft == false }}
     steps:
+      - name: Resolve ref to build
+        id: ref
+        run: |
+          if [ "${{ github.event_name }}" = "release" ]; then
+            echo "ref=${{ github.event.release.tag_name }}" >> "$GITHUB_OUTPUT"
+            echo "is_release=true" >> "$GITHUB_OUTPUT"
+          elif [ -n "${{ github.event.inputs.ref }}" ]; then
+            echo "ref=${{ github.event.inputs.ref }}" >> "$GITHUB_OUTPUT"
+            echo "is_release=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ref=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
+            echo "is_release=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          ref: ${{ steps.ref.outputs.ref }}
 
       - name: Set up QEMU (multi-arch emulation)
         uses: docker/setup-qemu-action@v4
@@ -48,13 +76,16 @@ jobs:
         uses: docker/metadata-action@v6
         with:
           images: ghcr.io/${{ github.repository }}
+          # On release events, use the release's tag_name. On workflow_dispatch,
+          # default to :main (manual rebuild) unless a ref input was given.
           tags: |
-            type=match,pattern=v(.*),group=1
-            type=match,pattern=v(\d.\d.\d),group=1
-            type=match,pattern=v(\d.\d),group=1
-            type=match,pattern=v(\d),group=1
+            ${{ steps.ref.outputs.is_release == 'true' && 'type=match,pattern=v(.*),group=1' || '' }}
+            ${{ steps.ref.outputs.is_release == 'true' && 'type=match,pattern=v(\d.\d.\d),group=1' || '' }}
+            ${{ steps.ref.outputs.is_release == 'true' && 'type=match,pattern=v(\d.\d),group=1' || '' }}
+            ${{ steps.ref.outputs.is_release == 'true' && 'type=match,pattern=v(\d),group=1' || '' }}
             type=sha,format=short
-            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
+            type=raw,value=latest,enable=${{ steps.ref.outputs.is_release == 'true' }}
+            type=raw,value=main,enable=${{ steps.ref.outputs.is_release != 'true' }}
 
       - name: Build and push
         uses: docker/build-push-action@v7
