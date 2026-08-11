@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.4](https://github.com/lenaxia/AI-or-Not/compare/v0.2.3...v0.2.4) (2026-08-11)
+
+
+### Bug Fixes
+
+* **docker:** trigger publish on release event + pin npm@11 in Dockerfile ([183faac](https://github.com/lenaxia/AI-or-Not/commit/183faac4a39f4b64ab396192c3f3df202ad89edc))
+
 ## [0.2.3](https://github.com/lenaxia/AI-or-Not/compare/v0.2.2...v0.2.3) (2026-08-11)
 
 
