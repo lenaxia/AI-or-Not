@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.1](https://github.com/lenaxia/AI-or-Not/compare/v0.3.0...v0.3.1) (2026-08-12)
+
+
+### Bug Fixes
+
+* **game:** review gallery UX — icons left, bigger score, modal, labels ([3d2bae3](https://github.com/lenaxia/AI-or-Not/commit/3d2bae33d6510053104747718ae324143e02c0d0))
+
 ## [0.3.0](https://github.com/lenaxia/AI-or-Not/compare/v0.2.5...v0.3.0) (2026-08-12)
 
 
