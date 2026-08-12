@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.1](https://github.com/lenaxia/AI-or-Not/compare/v0.4.0...v0.4.1) (2026-08-12)
+
+
+### Bug Fixes
+
+* **review:** colored pill labels, responsive modal for mobile ([4c4a580](https://github.com/lenaxia/AI-or-Not/commit/4c4a5809f7c2f517e273b3a948a3eefaa4809988))
+
 ## [0.4.0](https://github.com/lenaxia/AI-or-Not/compare/v0.3.1...v0.4.0) (2026-08-12)
 
 
