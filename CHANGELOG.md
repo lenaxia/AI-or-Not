@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.0](https://github.com/lenaxia/AI-or-Not/compare/v0.4.1...v0.5.0) (2026-08-12)
+
+
+### Features
+
+* **game:** sequential hard-mode reveal, clickable placeholders, timing ([6da3a1e](https://github.com/lenaxia/AI-or-Not/commit/6da3a1e26d5ff132b1339f58e201883010f89dd5))
+
 ## [0.4.1](https://github.com/lenaxia/AI-or-Not/compare/v0.4.0...v0.4.1) (2026-08-12)
 
 
