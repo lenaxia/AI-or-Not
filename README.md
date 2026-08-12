@@ -17,6 +17,29 @@ The backend serves every image through an **opaque, server-proxied endpoint**
 so the source of each photo is never exposed to the browser. Players can't
 cheat by inspecting filenames, URLs, or the network tab.
 
+## Project goals
+
+This is a **fun project**, not enterprise software. We optimize for, in
+priority order:
+
+1. **Functional** — the features actually work.
+2. **Performant enough** — rounds stay snappy under casual load; nothing does
+   obviously wasteful work on the hot path.
+3. **Simple** — few knobs, little config surface, easy to run locally.
+
+Security and feature richness are explicitly **not** top priorities. Auth is
+a shared password; we don't build for scale we don't have. If you're looking
+for a hardened, multi-tenant, audit-logged image-classification platform,
+this isn't it — and that's by design.
+
+### Roadmap
+
+Active design work lives under [`docs/backlog/`](./docs/backlog). The current
+epic covers **S3 image sourcing**, **per-image ELO ranking**, **SHA1-based
+dedup**, and a small **admin portal**:
+
+→ [`docs/backlog/epic01-s3-elo-admin/README.md`](./docs/backlog/epic01-s3-elo-admin/README.md)
+
 ## Features
 
 - **A / B / None / Both** guessing — nuanced enough that skill is measurable

@@ -15,7 +15,3 @@ CREATE TABLE `images` (
 );
 --> statement-breakpoint
 CREATE UNIQUE INDEX `images_sha1_unique` ON `images` (`sha1`);
---> statement-breakpoint
-CREATE INDEX `images_label_retired_idx` ON `images` (`label`, `retired`);
---> statement-breakpoint
-CREATE INDEX `images_label_elo_idx` ON `images` (`label`, `elo`);
