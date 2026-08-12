@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.2](https://github.com/lenaxia/AI-or-Not/compare/v0.6.1...v0.6.2) (2026-08-12)
+
+
+### Bug Fixes
+
+* **ci:** tag Docker images with version numbers ([f4f730d](https://github.com/lenaxia/AI-or-Not/commit/f4f730dda6c75c5d4ac93069d03b1b61d0a0d7b3))
+
 ## [0.6.1](https://github.com/lenaxia/AI-or-Not/compare/v0.6.0...v0.6.1) (2026-08-12)
 
 
