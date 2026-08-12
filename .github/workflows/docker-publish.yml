@@ -77,21 +77,37 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Extract version from ref
+        id: ver
+        run: |
+          REF="${{ steps.ref.outputs.ref }}"
+          if [[ "$REF" =~ ^v([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
+            MAJOR="${BASH_REMATCH[1]}"
+            MINOR="${BASH_REMATCH[2]}"
+            PATCH="${BASH_REMATCH[3]}"
+            echo "full=${MAJOR}.${MINOR}.${PATCH}" >> "$GITHUB_OUTPUT"
+            echo "minor=${MAJOR}.${MINOR}" >> "$GITHUB_OUTPUT"
+            echo "major=${MAJOR}" >> "$GITHUB_OUTPUT"
+            echo "is_release=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "is_release=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Parse semver tag into variants
         id: meta
         uses: docker/metadata-action@v6
         with:
           images: ghcr.io/${{ github.repository }}
-          # On release tags, use the tag name. Otherwise default to :main
-          # (manual rebuild of an unreleased branch).
+          # type=match reads GITHUB_REF, which is refs/heads/main in a
+          # workflow_call — not the tag we're building. Use type=raw with
+          # the version extracted above instead.
           tags: |
-            ${{ steps.ref.outputs.is_release == 'true' && 'type=match,pattern=v(.*),group=1' || '' }}
-            ${{ steps.ref.outputs.is_release == 'true' && 'type=match,pattern=v(\d.\d.\d),group=1' || '' }}
-            ${{ steps.ref.outputs.is_release == 'true' && 'type=match,pattern=v(\d.\d),group=1' || '' }}
-            ${{ steps.ref.outputs.is_release == 'true' && 'type=match,pattern=v(\d),group=1' || '' }}
+            type=raw,value=${{ steps.ver.outputs.full }},enable=${{ steps.ver.outputs.is_release == 'true' }}
+            type=raw,value=${{ steps.ver.outputs.minor }},enable=${{ steps.ver.outputs.is_release == 'true' }}
+            type=raw,value=${{ steps.ver.outputs.major }},enable=${{ steps.ver.outputs.is_release == 'true' }}
             type=sha,format=short
-            type=raw,value=latest,enable=${{ steps.ref.outputs.is_release == 'true' }}
-            type=raw,value=main,enable=${{ steps.ref.outputs.is_release != 'true' }}
+            type=raw,value=latest,enable=${{ steps.ver.outputs.is_release == 'true' }}
+            type=raw,value=main,enable=${{ steps.ver.outputs.is_release != 'true' }}
 
       - name: Build and push
         uses: docker/build-push-action@v7
