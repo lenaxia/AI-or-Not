@@ -538,6 +538,7 @@ function FinishedScreen({
   const correct = stats.rounds.filter((r) => r.correct).length;
   const total = stats.rounds.length;
   const beat = stats.percentile;
+  const topPct = Math.round((100 - beat) * 10) / 10;
   return (
     <div className="w-full max-w-2xl mx-auto px-4 py-10">
       <Card>
@@ -553,7 +554,7 @@ function FinishedScreen({
         <CardContent className="flex flex-col gap-6">
           <div className="grid grid-cols-3 gap-3 text-center">
             <Stat label="Rank" value={`#${stats.rank}`} />
-            <Stat label="Percentile" value={`Top ${100 - beat}%`} />
+            <Stat label="Percentile" value={`Top ${topPct}%`} />
             <Stat label="Avg (this mode)" value={`${stats.mean}%`} />
           </div>
 
