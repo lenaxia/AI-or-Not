@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.1](https://github.com/lenaxia/AI-or-Not/compare/v0.6.0...v0.6.1) (2026-08-12)
+
+
+### Bug Fixes
+
+* **game:** round percentile display to avoid float artifacts ([1b786b5](https://github.com/lenaxia/AI-or-Not/commit/1b786b52130709c187f0271ad7db40362ff563bd))
+
 ## [0.6.0](https://github.com/lenaxia/AI-or-Not/compare/v0.5.0...v0.6.0) (2026-08-12)
 
 
