@@ -1,7 +1,8 @@
 import { guessBodySchema } from "@/lib/schemas";
-import { decodeToken } from "@/lib/game";
+import { decodeToken, labelForSide } from "@/lib/game";
 import { recordGuess } from "@/lib/game-store";
 import { rateLimit, getClientIp } from "@/lib/rate-limit";
+import { recordAppearance, imageFooledPlayer } from "@/lib/elo";
 import type { GuessResponse } from "@/lib/types";
 
 const GUESS_LIMIT = { capacity: 30, perHour: 200, prefix: "guess" };
@@ -43,6 +44,23 @@ export async function POST(request: Request) {
       { error: "invalid-game-token", message: "Game session expired or invalid." },
       { status: 400 },
     );
+  }
+
+  // Update ELO for both images in the round. Awaited inside try/catch so a
+  // failure can never break the guess response, but the work actually runs
+  // before the Response is returned (fire-and-forget would be unsafe in
+  // serverless where the runtime can be torn down once the Response leaves).
+  // Each update is a single atomic SQL statement (no RMW race — see elo.ts).
+  const guess = parsed.data.guess;
+  const leftLabel = labelForSide(payload.t, "left");
+  const rightLabel = labelForSide(payload.t, "right");
+  try {
+    await Promise.all([
+      recordAppearance(payload.l, imageFooledPlayer(leftLabel, "left", guess)),
+      recordAppearance(payload.r, imageFooledPlayer(rightLabel, "right", guess)),
+    ]);
+  } catch (err) {
+    console.warn("[guess] ELO update failed:", err);
   }
 
   const result: GuessResponse = {

@@ -143,6 +143,15 @@ ROA_DB_URL=...
 | `TURSO_DATABASE_URL` | — | Turso remote DB URL (overrides `ROA_DB_URL`) |
 | `TURSO_AUTH_TOKEN` | — | Turso auth token |
 | `ROA_SECRET` | *(dev default)* | Secret used to sign round tokens & hash image IDs — **set this in production** |
+| `ROA_ELO_RETIRE_BELOW` | `600` | Images with ELO below this are excluded from rotation (empty-pool fallback applies) |
+| `ROA_S3_BUCKET` | — | When set, the bucket becomes an image source (alongside the local FS) |
+| `ROA_S3_REGION` | — | AWS region for the bucket |
+| `ROA_S3_PREFIX_AI` | `ai/` | Key prefix for AI-generated images in the bucket |
+| `ROA_S3_PREFIX_REAL` | `real/` | Key prefix for real photos in the bucket |
+| `ROA_S3_ENDPOINT` | — | Custom endpoint for S3-compatible backends (R2, MinIO, B2) |
+| `ROA_S3_FORCE_PATH_STYLE` | `false` | `true` for some S3-compatible backends |
+| `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` / `AWS_SESSION_TOKEN` | — | Standard AWS SDK credential chain (used iff `ROA_S3_BUCKET` is set; IAM role also works) |
+| `ROA_ADMIN_PASSWORD` | — | When set, the admin portal at `/admin` and `/api/admin/*` are enabled (shared password) |
 
 ## Releases
 
