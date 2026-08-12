@@ -149,6 +149,7 @@ ROA_DB_URL=...
 | `ROA_S3_REGION` | — | AWS region for the bucket |
 | `ROA_S3_PREFIX_AI` | `ai/` | Key prefix for AI-generated images in the bucket |
 | `ROA_S3_PREFIX_REAL` | `real/` | Key prefix for real photos in the bucket |
+| `ROA_S3_PREFIX_PENDING` | `pending-review/` | Staging prefix for the admin moderation queue (subfolders `ai/` + `real/`) |
 | `ROA_S3_ENDPOINT` | — | Custom endpoint for S3-compatible backends (R2, MinIO, B2) |
 | `ROA_S3_FORCE_PATH_STYLE` | `false` | `true` for some S3-compatible backends |
 | `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` / `AWS_SESSION_TOKEN` | — | Standard AWS SDK credential chain (used iff `ROA_S3_BUCKET` is set; IAM role also works) |

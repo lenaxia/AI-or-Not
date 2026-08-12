@@ -11,6 +11,10 @@ import {
   Trash2,
   Eye,
   EyeOff,
+  Check,
+  X,
+  Forward,
+  ClipboardCheck,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -60,7 +64,21 @@ interface UploadResult {
   }>;
 }
 
-type Tab = "gallery" | "elo";
+type Tab = "gallery" | "elo" | "pending";
+
+interface PendingItem {
+  key: string;
+  label: Label;
+  ext: string;
+  mime: string;
+}
+
+interface PendingResponse {
+  items: PendingItem[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
 
 export default function AdminShell() {
   const [authed, setAuthed] = useState(false);
@@ -108,6 +126,14 @@ export default function AdminShell() {
             <ImageIcon className="size-4" /> Gallery
           </Button>
           <Button
+            variant={tab === "pending" ? "default" : "outline"}
+            size="sm"
+            onClick={() => setTab("pending")}
+            className="gap-1.5"
+          >
+            <ClipboardCheck className="size-4" /> Pending
+          </Button>
+          <Button
             variant={tab === "elo" ? "default" : "outline"}
             size="sm"
             onClick={() => setTab("elo")}
@@ -128,7 +154,13 @@ export default function AdminShell() {
           </Button>
         </div>
       </div>
-      {tab === "gallery" ? <GalleryView /> : <EloView />}
+      {tab === "gallery" ? (
+        <GalleryView />
+      ) : tab === "pending" ? (
+        <PendingView />
+      ) : (
+        <EloView />
+      )}
     </div>
   );
 }
@@ -474,6 +506,214 @@ function ImageTile({
           </Button>
         </div>
       </div>
+    </div>
+  );
+}
+
+// ---------- PENDING REVIEW ----------
+
+function PendingView() {
+  const [data, setData] = useState<PendingResponse | null>(null);
+  const [labelFilter, setLabelFilter] = useState<Label | undefined>(undefined);
+  const [idx, setIdx] = useState(0);
+  const [loading, setLoading] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  const [reviewed, setReviewed] = useState(0);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    const params = new URLSearchParams({ page: "1" });
+    if (labelFilter) params.set("label", labelFilter);
+    try {
+      const res = await fetch(`/api/admin/pending?${params}`);
+      if (res.ok) {
+        const d: PendingResponse = await res.json();
+        setData(d);
+        setIdx(0);
+      }
+    } finally {
+      setLoading(false);
+    }
+  }, [labelFilter]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      await load();
+      if (cancelled) return;
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [load]);
+
+  const current = data?.items[idx];
+
+  const review = useCallback(
+    async (action: "accept" | "reject") => {
+      if (!current || busy) return;
+      setBusy(true);
+      setMsg(null);
+      try {
+        const res = await fetch("/api/admin/pending/review", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            key: current.key,
+            label: current.label,
+            action,
+          }),
+        });
+        const r = await res.json();
+        if (!res.ok) {
+          setMsg(r.error ?? "Review failed.");
+          return;
+        }
+        setReviewed((n) => n + 1);
+        if (action === "accept" && r.duplicate) {
+          setMsg("Accepted (duplicate — already in rotation).");
+        } else if (action === "accept") {
+          setMsg(`Accepted → ${r.promotedTo}`);
+        } else {
+          setMsg("Rejected. Hash recorded.");
+        }
+        // Advance; trim the current item from the list.
+        setData((prev) => {
+          if (!prev) return prev;
+          const items = prev.items.filter((_, i) => i !== idx);
+          return { ...prev, items, total: items.length };
+        });
+        setIdx((i) => Math.min(i, Math.max(0, (data?.items.length ?? 1) - 2)));
+      } finally {
+        setBusy(false);
+      }
+    },
+    [current, busy, idx, data],
+  );
+
+  const skip = useCallback(() => {
+    setMsg(null);
+    setIdx((i) => Math.min(i + 1, (data?.items.length ?? 1) - 1));
+  }, [data]);
+
+  const cleanup = async () => {
+    setBusy(true);
+    setMsg("Scanning pending for rejected hashes…");
+    try {
+      const res = await fetch("/api/admin/pending/cleanup", { method: "POST" });
+      const r = await res.json();
+      setMsg(`Cleaned up: scanned ${r.scanned}, deleted ${r.deleted}.`);
+      void load();
+      setReviewed(0);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // Keyboard shortcuts: A=accept, R=reject, S=skip.
+  useEffect(() => {
+    if (!current) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      const k = e.key.toLowerCase();
+      if (k === "a") { e.preventDefault(); void review("accept"); }
+      else if (k === "r") { e.preventDefault(); void review("reject"); }
+      else if (k === "s") { e.preventDefault(); skip(); }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [current, review, skip]);
+
+  return (
+    <div className="flex flex-col gap-4">
+      {/* Toolbar: filters + cleanup */}
+      <div className="flex flex-wrap gap-2 items-center">
+        <FilterPill active={!labelFilter} onClick={() => { setLabelFilter(undefined); setReviewed(0); }}>
+          All ({data?.total ?? 0})
+        </FilterPill>
+        <FilterPill active={labelFilter === "ai"} onClick={() => { setLabelFilter("ai"); setReviewed(0); }}>
+          AI
+        </FilterPill>
+        <FilterPill active={labelFilter === "real"} onClick={() => { setLabelFilter("real"); setReviewed(0); }}>
+          Real
+        </FilterPill>
+        <Button
+          variant="outline"
+          size="sm"
+          className="gap-1.5 ml-auto"
+          onClick={cleanup}
+          disabled={busy}
+        >
+          <Trash2 className="size-4" /> Clean up rejected
+        </Button>
+      </div>
+
+      {reviewed > 0 && (
+        <p className="text-sm text-muted-foreground">
+          Reviewed {reviewed} this session · {(data?.total ?? 0)} remaining
+        </p>
+      )}
+
+      {loading && !data ? (
+        <div className="flex justify-center py-12">
+          <Loader2 className="size-6 animate-spin text-muted-foreground" />
+        </div>
+      ) : current ? (
+        <div className="flex flex-col items-center gap-4">
+          <div className="relative max-w-xl w-full rounded-lg border overflow-hidden bg-muted">
+            {/* eslint-disable-next-line @next/next/no-img-element -- admin-only preview */}
+            <img
+              key={current.key}
+              src={`/api/admin/pending/img?key=${encodeURIComponent(current.key)}`}
+              alt={current.key}
+              className="w-full max-h-[60vh] object-contain"
+              draggable={false}
+            />
+            <div className="absolute top-2 left-2 flex gap-1">
+              <Badge variant={current.label === "ai" ? "default" : "secondary"}>
+                {current.label === "ai" ? "AI" : "Real"}
+              </Badge>
+            </div>
+          </div>
+          <p className="text-xs font-mono text-muted-foreground max-w-xl truncate">
+            {current.key}
+          </p>
+          <div className="flex gap-2">
+            <Button
+              variant="default"
+              className="gap-1.5"
+              onClick={() => review("accept")}
+              disabled={busy}
+            >
+              <Check className="size-4" /> Accept <kbd className="text-[10px] opacity-60">A</kbd>
+            </Button>
+            <Button
+              variant="destructive"
+              className="gap-1.5"
+              onClick={() => review("reject")}
+              disabled={busy}
+            >
+              <X className="size-4" /> Reject <kbd className="text-[10px] opacity-60">R</kbd>
+            </Button>
+            <Button
+              variant="outline"
+              className="gap-1.5"
+              onClick={skip}
+              disabled={busy || idx >= (data?.items.length ?? 1) - 1}
+            >
+              <Forward className="size-4" /> Skip <kbd className="text-[10px] opacity-60">S</kbd>
+            </Button>
+          </div>
+          {msg && (
+            <p className="text-sm text-muted-foreground bg-muted rounded-md px-3 py-2">{msg}</p>
+          )}
+        </div>
+      ) : (
+        <p className="text-center text-sm text-muted-foreground py-12">
+          No pending images to review. 🎉
+        </p>
+      )}
     </div>
   );
 }

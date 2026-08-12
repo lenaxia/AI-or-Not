@@ -109,6 +109,36 @@ const pendingKey = (label: "ai" | "real", name: string) =>
 // Registry: rejectSha1 / isSha1Rejected
 // ---------------------------------------------------------------------------
 
+describe("pendingKeyLabel (key-prefix security boundary)", () => {
+  it("returns the label for a key under pending-review/ai/", async () => {
+    const { pendingKeyLabel } = await import("./pending-review");
+    expect(pendingKeyLabel("pending-review/ai/foo.jpg")).toBe("ai");
+  });
+
+  it("returns the label for a key under pending-review/real/", async () => {
+    const { pendingKeyLabel } = await import("./pending-review");
+    expect(pendingKeyLabel("pending-review/real/bar.png")).toBe("real");
+  });
+
+  it("rejects a key under the accepted ai/ prefix (no pending-review)", async () => {
+    const { pendingKeyLabel } = await import("./pending-review");
+    expect(pendingKeyLabel("ai/secret.jpg")).toBeNull();
+  });
+
+  it("rejects path-traversal attempts", async () => {
+    const { pendingKeyLabel } = await import("./pending-review");
+    expect(pendingKeyLabel("pending-review/../../etc/passwd")).toBeNull();
+    expect(pendingKeyLabel("pending-review/ai/../../real/x.jpg")).toBe("ai");
+  });
+
+  it("rejects empty / garbage keys", async () => {
+    const { pendingKeyLabel } = await import("./pending-review");
+    expect(pendingKeyLabel("")).toBeNull();
+    expect(pendingKeyLabel("pending-review/")).toBeNull();
+    expect(pendingKeyLabel("pending-review/ai")).toBeNull();
+  });
+});
+
 describe("rejected-image registry", () => {
   it("isSha1Rejected is false before any reject", async () => {
     const { isSha1Rejected } = await import("./pending-review");
