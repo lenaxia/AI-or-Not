@@ -2,7 +2,8 @@ export type Label = "ai" | "real";
 
 export type Mode = "easy" | "hard";
 
-export type Verdict = "left" | "right" | "both" | "none";
+/** Which side the player thinks is AI. Exactly one AI + one real per round. */
+export type Verdict = "left" | "right";
 
 export interface CatalogEntry {
   id: string;
@@ -28,10 +29,7 @@ export interface RoundResponse {
 }
 
 export interface GuessResponse {
-  correct: boolean;
-  truth: Verdict;
-  /** Running server-side score after this guess. */
-  correctSoFar: number;
+  /** Server-tracked round count after this guess. No truth/correct leak. */
   totalSoFar: number;
 }
 
@@ -46,6 +44,14 @@ export interface Bucket {
   count: number;
 }
 
+export interface RoundHistoryEntry {
+  leftId: string;
+  rightId: string;
+  truth: Verdict;
+  guess: Verdict;
+  correct: boolean;
+}
+
 export interface ScoreStats {
   total: number;
   rank: number;
@@ -55,6 +61,8 @@ export interface ScoreStats {
   median: number;
   yourScore: number;
   distribution: Bucket[];
+  /** Per-round truth + guess for the end-of-game review gallery. */
+  rounds: RoundHistoryEntry[];
 }
 
 export interface LeaderboardEntry {

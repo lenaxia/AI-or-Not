@@ -1,65 +1,60 @@
 import "server-only";
 import type { Mode, RoundResponse, Verdict } from "./types";
+import type { CatalogEntry } from "./types";
 import { pickByLabel } from "./catalog";
 import { sign, verify } from "./crypto";
 
 interface RoundTokenPayload {
   l: string; // left image id
   r: string; // right image id
-  t: Verdict; // truth
+  t: Verdict; // truth (which side is AI)
   m: Mode;
   ts: number;
 }
 
-// Weighted truth distribution. Left/right dominate so the core loop is
-// "spot the AI image"; both/none appear occasionally to keep it honest.
-const WEIGHTS: Array<[Verdict, number]> = [
-  ["left", 0.4],
-  ["right", 0.4],
-  ["both", 0.1],
-  ["none", 0.1],
-];
-
+/** 50/50: left is AI or right is AI. Exactly one of each per round. */
 export function rollTruth(): Verdict {
-  const r = Math.random();
-  let acc = 0;
-  for (const [v, w] of WEIGHTS) {
-    acc += w;
-    if (r <= acc) return v;
-  }
-  return "right";
+  return Math.random() < 0.5 ? "left" : "right";
 }
 
 export interface BuiltRound {
   response: RoundResponse;
   truth: Verdict;
+  left: CatalogEntry;
+  right: CatalogEntry;
 }
 
 /**
- * Map a round truth (which sides are AI) to a single side's true label.
- * Shared between buildRound and the guess-route ELO wiring so there's one
- * source of truth for the Verdict→label mapping.
+ * Map a round truth (which side is AI) to a single side's true label.
+ * With exactly-one-AI-per-round, this is trivial: the truth side is AI,
+ * the other is real.
  */
 export function labelForSide(
   truth: Verdict,
   side: "left" | "right",
 ): "ai" | "real" {
-  if (truth === "both") return "ai";
-  if (truth === "none") return "real";
   return truth === side ? "ai" : "real";
 }
 
-export async function buildRound(mode: Mode): Promise<BuiltRound | null> {
+/**
+ * Build a round with exactly one AI and one real image, excluding any IDs
+ * already shown this game (seenIds). Returns null if either pool is empty.
+ */
+export async function buildRound(
+  mode: Mode,
+  seenIds?: Set<string>,
+): Promise<BuiltRound | null> {
   const truth = rollTruth();
 
-  const leftLabel = labelForSide(truth, "left");
-  const rightLabel = labelForSide(truth, "right");
-  const needDistinct = truth === "both" || truth === "none";
+  // Pick the AI image and the real image, both excluding seenIds.
+  const aiEntry = await pickByLabel("ai", seenIds);
+  if (!aiEntry) return null;
+  const realEntry = await pickByLabel("real", seenIds);
+  if (!realEntry) return null;
 
-  const left = await pickByLabel(leftLabel);
-  if (!left) return null;
-  const right = await pickByLabel(rightLabel, needDistinct ? left.id : undefined);
-  if (!right) return null;
+  // Assign sides based on truth: the truth side gets the AI image.
+  const left = truth === "left" ? aiEntry : realEntry;
+  const right = truth === "left" ? realEntry : aiEntry;
 
   const payload: RoundTokenPayload = {
     l: left.id,
@@ -71,6 +66,8 @@ export async function buildRound(mode: Mode): Promise<BuiltRound | null> {
 
   return {
     truth,
+    left,
+    right,
     response: {
       leftId: left.id,
       rightId: right.id,

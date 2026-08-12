@@ -8,7 +8,7 @@ export const startBodySchema = z.object({
 
 export const guessBodySchema = z.object({
   token: z.string().min(1),
-  guess: z.enum(["left", "right", "both", "none"]),
+  guess: z.enum(["left", "right"]),
   gameToken: z.string().min(1),
 });
 

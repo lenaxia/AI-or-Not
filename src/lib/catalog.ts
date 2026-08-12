@@ -182,28 +182,23 @@ function eligible(pool: CatalogEntry[]): CatalogEntry[] {
 
 export async function pickByLabel(
   label: Label,
-  excludeId?: string,
+  excludeIds?: Set<string>,
 ): Promise<CatalogEntry | undefined> {
   const cat = await getCatalog();
   const all = cat.byLabel[label];
+  const excludes = (e: CatalogEntry) => !excludeIds || !excludeIds.has(e.id);
 
-  // 1. Rotation-eligible pool (active + above ELO floor).
-  let pool = eligible(all);
-  if (excludeId) pool = pool.filter((e) => e.id !== excludeId);
+  // 1. Rotation-eligible pool (active + above ELO floor), minus seen IDs.
+  let pool = eligible(all).filter(excludes);
 
-  // 2. Empty-pool fallback: relax the ELO floor (still skip manually retired).
-  //    Keeps the game from 503'ing when every image of a label dips below
-  //    the floor. Note: we deliberately don't relax to <2 here — a single
-  //    eligible image is fine for "left"/"right" rounds; only "both"/"none"
-  //    (which pass excludeId) would fail, and that's handled by step 3.
+  // 2. Empty-pool fallback: relax the ELO floor (still skip retired + seen).
   if (pool.length === 0) {
-    pool = all.filter((e) => !e.retired && e.id !== excludeId);
+    pool = all.filter((e) => !e.retired && excludes(e));
   }
 
-  // 3. Last-resort: include manually retired ones too. Better a retired
-  //    image than a broken game.
+  // 3. Last-resort: include retired too. Better a repeat than a broken game.
   if (pool.length === 0) {
-    pool = all.filter((e) => e.id !== excludeId);
+    pool = all.filter(excludes);
   }
 
   return pick(pool);

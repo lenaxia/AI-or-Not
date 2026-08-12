@@ -15,6 +15,11 @@ const POPULATION_RATING = 1000;
 const ELO_FLOOR = 100;
 
 export type Side = "left" | "right";
+/**
+ * The player's pick. With the issue-#18 redesign, this is always "left" or
+ * "right" — the wider union is kept for the function's test matrix and as
+ * a safety net in case ambiguous verdicts are re-added behind a config.
+ */
 export type Guess = "left" | "right" | "both" | "none";
 export type ImageLabel = "ai" | "real";
 

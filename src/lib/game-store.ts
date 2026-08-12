@@ -1,6 +1,6 @@
 import "server-only";
 import { randomBytes } from "node:crypto";
-import type { Mode } from "./types";
+import type { Mode, Verdict } from "./types";
 import { sign, verify } from "./crypto";
 
 /**
@@ -12,6 +12,9 @@ import { sign, verify } from "./crypto";
  * leaderboard submission reads from this store and ignores any client-
  * supplied score.
  *
+ * Also tracks seenIds (for within-session dedup) and the full round+guess
+ * history (for the end-of-game review gallery).
+ *
  * SINGLE-INSTANCE ONLY. For multi-instance deploys (Kubernetes with >1
  * replica, serverless), replace this with Redis or a shared DB table.
  * The interface (start/guess/finish/expire) maps cleanly to a KV store.
@@ -20,6 +23,17 @@ import { sign, verify } from "./crypto";
 const GAME_TTL_MS = 2 * 60 * 60 * 1000; // 2 hours
 const CLEANUP_INTERVAL_MS = 10 * 60 * 1000; // 10 minutes
 
+export interface RoundRecord {
+  leftId: string;
+  rightId: string;
+  truth: Verdict;
+}
+
+export interface GuessRecord {
+  guess: Verdict;
+  correct: boolean;
+}
+
 export interface GameState {
   id: string;
   mode: Mode;
@@ -27,6 +41,12 @@ export interface GameState {
   total: number;
   startedAt: number;
   expiresAt: number;
+  /** Image IDs already shown this game — prevents repeats within a session. */
+  seenIds: Set<string>;
+  /** Per-round truth + image IDs, appended on each /api/game/round call. */
+  rounds: RoundRecord[];
+  /** Per-guess records, appended on each /api/game/guess call. */
+  guesses: GuessRecord[];
 }
 
 interface GameTokenPayload {
@@ -61,6 +81,9 @@ export function startGame(mode: Mode): { gameToken: string; state: GameState } {
     total: 0,
     startedAt: now,
     expiresAt: now + GAME_TTL_MS,
+    seenIds: new Set(),
+    rounds: [],
+    guesses: [],
   };
   store.set(id, state);
   const payload: GameTokenPayload = {
@@ -88,17 +111,36 @@ export function resolveGame(gameToken: string): GameState | null {
 }
 
 /**
+ * Record a round's image IDs + truth. Called by /api/game/round after
+ * buildRound succeeds, so the server remembers the truth for the review
+ * gallery and can dedup future rounds.
+ */
+export function recordRound(
+  gameToken: string,
+  round: RoundRecord,
+): GameState | null {
+  const state = resolveGame(gameToken);
+  if (!state) return null;
+  state.rounds.push(round);
+  state.seenIds.add(round.leftId);
+  state.seenIds.add(round.rightId);
+  return state;
+}
+
+/**
  * Record a guess. Call only after the round token has been verified.
- * Returns the updated state, or null if the game token is invalid.
+ * Stores the guess for the review gallery and increments the score tally.
  */
 export function recordGuess(
   gameToken: string,
+  guess: Verdict,
   correct: boolean,
 ): GameState | null {
   const state = resolveGame(gameToken);
   if (!state) return null;
   state.total += 1;
   if (correct) state.correct += 1;
+  state.guesses.push({ guess, correct });
   return state;
 }
 
