@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.0](https://github.com/lenaxia/AI-or-Not/compare/v0.5.0...v0.6.0) (2026-08-12)
+
+
+### Features
+
+* **admin:** delete row or delete row + source file/object ([3c97b16](https://github.com/lenaxia/AI-or-Not/commit/3c97b1659b43c6feb177fcecb799c036bc8fe116))
+
 ## [0.5.0](https://github.com/lenaxia/AI-or-Not/compare/v0.4.1...v0.5.0) (2026-08-12)
 
 
