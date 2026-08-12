@@ -3,6 +3,8 @@ import {
   S3Client,
   ListObjectsV2Command,
   GetObjectCommand,
+  CopyObjectCommand,
+  DeleteObjectCommand,
   type _Object,
 } from "@aws-sdk/client-s3";
 import type { Readable } from "node:stream";
@@ -132,6 +134,26 @@ export async function getS3Object(key: string): Promise<Buffer> {
   const res = await s3.send(new GetObjectCommand({ Bucket: c.bucket, Key: key }));
   if (!res.Body) throw new Error(`empty body for s3://${c.bucket}/${key}`);
   return streamToBuffer(res.Body as Readable);
+}
+
+/** Copy an object within the configured bucket (server-side, no egress). */
+export async function copyS3Object(srcKey: string, dstKey: string): Promise<void> {
+  const c = cfg()!;
+  const s3 = getClient();
+  await s3.send(
+    new CopyObjectCommand({
+      Bucket: c.bucket,
+      CopySource: `${c.bucket}/${srcKey}`,
+      Key: dstKey,
+    }),
+  );
+}
+
+/** Delete an object from the configured bucket. */
+export async function deleteS3Object(key: string): Promise<void> {
+  const c = cfg()!;
+  const s3 = getClient();
+  await s3.send(new DeleteObjectCommand({ Bucket: c.bucket, Key: key }));
 }
 
 export function s3Locator(bucket: string, key: string): string {

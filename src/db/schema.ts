@@ -43,5 +43,23 @@ export const images = sqliteTable("images", {
   updatedAt: integer("updated_at").notNull(),
 });
 
+/**
+ * Registry of SHA1 hashes rejected by an admin during pending-review. Kept
+ * forever so re-uploads of a rejected image (to pending, via the gallery
+ * dropzone, or on disk) stay out of rotation. Consulted globally by upload,
+ * reindex, and the pending-review cleanup pass.
+ */
+export const rejectedImages = sqliteTable("rejected_images", {
+  sha1: text("sha1").primaryKey(),
+  label: text("label", { enum: ["ai", "real"] }).notNull(),
+  sourceKey: text("source_key"),
+  rejectedAt: integer("rejected_at")
+    .notNull()
+    .default(sql`(unixepoch() * 1000)`),
+});
+
+export type RejectedImageRow = typeof rejectedImages.$inferSelect;
+export type NewRejectedImageRow = typeof rejectedImages.$inferInsert;
+
 export type ImageRow = typeof images.$inferSelect;
 export type NewImageRow = typeof images.$inferInsert;

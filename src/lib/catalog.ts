@@ -7,6 +7,7 @@ import { images, type ImageRow } from "@/db/schema";
 import type { CatalogEntry, Label } from "./types";
 import { sha1Hex, imageIdFromSha1 } from "./image-hash";
 import { listS3Images, getS3Object, s3Locator, s3Enabled } from "./s3";
+import { isSha1Rejected } from "./pending-review";
 
 function imagesDir(): string {
   return process.env.ROA_IMAGES_DIR?.trim() || path.join(process.cwd(), "images");
@@ -213,6 +214,7 @@ export async function reindexFromFs(): Promise<{
   added: number;
   duplicates: number;
   removed: number;
+  rejected: number;
 }> {
   const seenLocators = new Set<string>();
 
@@ -261,10 +263,15 @@ export async function reindexFromFs(): Promise<{
 
   let added = 0;
   let duplicates = 0;
+  let rejected = 0;
 
   for (const c of candidates) {
     const bytes = await fs.readFile(c.absPath);
     const sha1 = sha1Hex(bytes);
+    if (await isSha1Rejected(sha1)) {
+      rejected++;
+      continue;
+    }
     if (alreadyIndexed.has(sha1)) continue;
     if (seenThisRun.has(sha1)) {
       duplicates++;
@@ -291,7 +298,7 @@ export async function reindexFromFs(): Promise<{
   }
 
   await reloadCache();
-  return { added, duplicates, removed };
+  return { added, duplicates, removed, rejected };
 }
 
 /**
@@ -308,8 +315,9 @@ export async function reindexFromS3(): Promise<{
   duplicates: number;
   skipped: number;
   removed: number;
+  rejected: number;
 }> {
-  if (!s3Enabled()) return { added: 0, duplicates: 0, skipped: 0, removed: 0 };
+  if (!s3Enabled()) return { added: 0, duplicates: 0, skipped: 0, removed: 0, rejected: 0 };
 
   const bucket = process.env.ROA_S3_BUCKET!.trim();
   const aiPrefix = process.env.ROA_S3_PREFIX_AI?.trim() || "ai/";
@@ -352,6 +360,7 @@ export async function reindexFromS3(): Promise<{
   let added = 0;
   let duplicates = 0;
   let skipped = 0;
+  let rejected = 0;
 
   for (const c of candidates) {
     let bytes: Buffer;
@@ -363,6 +372,10 @@ export async function reindexFromS3(): Promise<{
       continue;
     }
     const sha1 = sha1Hex(bytes);
+    if (await isSha1Rejected(sha1)) {
+      rejected++;
+      continue;
+    }
     if (alreadyIndexed.has(sha1)) continue;
     if (seenThisRun.has(sha1)) {
       duplicates++;
@@ -402,7 +415,7 @@ export async function reindexFromS3(): Promise<{
   }
 
   await reloadCache();
-  return { added, duplicates, skipped, removed };
+  return { added, duplicates, skipped, removed, rejected };
 }
 
 /** Combined reindex: FS then S3 (whichever sources are configured). */
@@ -411,6 +424,7 @@ export async function reindexAll(): Promise<{
   duplicates: number;
   skipped: number;
   removed: number;
+  rejected: number;
 }> {
   const fsRes = await reindexFromFs();
   const s3Res = await reindexFromS3();
@@ -419,6 +433,7 @@ export async function reindexAll(): Promise<{
     duplicates: fsRes.duplicates + s3Res.duplicates,
     skipped: s3Res.skipped,
     removed: fsRes.removed + s3Res.removed,
+    rejected: fsRes.rejected + s3Res.rejected,
   };
 }
 
@@ -463,6 +478,12 @@ export async function uploadImage(
 
   const sha1 = sha1Hex(bytes);
   const id = imageIdFromSha1(sha1);
+
+  // Global rejected-hash check: refuse banned content everywhere (pending,
+  // dropzone upload, FS). See src/lib/pending-review.ts.
+  if (await isSha1Rejected(sha1)) {
+    return { ok: false, error: "image was previously rejected" };
+  }
 
   // Dedup against the table.
   const existing = await db

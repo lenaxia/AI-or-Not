@@ -47,6 +47,9 @@ beforeEach(async () => {
     "DROP TABLE IF EXISTS images",
     IMAGE_TABLE_SQL,
     "CREATE UNIQUE INDEX images_sha1_unique ON images (sha1)",
+    "DROP TABLE IF EXISTS rejected_images",
+    `CREATE TABLE rejected_images (sha1 TEXT PRIMARY KEY NOT NULL,
+      label TEXT NOT NULL, source_key TEXT, rejected_at INTEGER NOT NULL)`,
   ]);
 });
 

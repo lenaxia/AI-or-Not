@@ -28,6 +28,9 @@ beforeEach(async () => {
     "CREATE UNIQUE INDEX images_sha1_unique ON images (sha1)",
     "CREATE INDEX images_label_retired_idx ON images (label, retired)",
     "CREATE INDEX images_label_elo_idx ON images (label, elo)",
+    "DROP TABLE IF EXISTS rejected_images",
+    `CREATE TABLE rejected_images (sha1 TEXT PRIMARY KEY NOT NULL,
+      label TEXT NOT NULL, source_key TEXT, rejected_at INTEGER NOT NULL)`,
   ]);
   // Reset the catalog cache between tests.
   const { __resetCatalogForTests } = await import("./catalog");

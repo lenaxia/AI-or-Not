@@ -15,6 +15,13 @@
       "when": 1786484760777,
       "tag": "0001_special_bloodstrike",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1786497542149,
+      "tag": "0002_gorgeous_lionheart",
+      "breakpoints": true
     }
   ]
 }

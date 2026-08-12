@@ -500,11 +500,12 @@ function FinishedScreen({
   return (
     <div className="w-full max-w-2xl mx-auto px-4 py-10">
       <Card>
-        <CardHeader>
-          <CardTitle className="text-2xl flex items-center gap-2">
-            <Trophy className="size-6" /> {stats.yourScore}%
-          </CardTitle>
-          <CardDescription>
+        <CardHeader className="text-center">
+          <Trophy className="size-8 mx-auto text-amber-500" />
+          <div className="text-5xl font-bold tabular-nums mt-2">
+            {stats.yourScore}%
+          </div>
+          <CardDescription className="text-base">
             {correct} of {total} correct in {mode} mode
           </CardDescription>
         </CardHeader>
@@ -536,15 +537,28 @@ function FinishedScreen({
 }
 
 function ReviewGallery({ rounds }: { rounds: RoundHistoryEntry[] }) {
+  const [selected, setSelected] = useState<number | null>(null);
   return (
     <div>
       <Separator className="mb-4" />
-      <p className="text-sm font-medium mb-3">Review</p>
-      <div className="flex flex-col gap-3">
+      <p className="text-sm font-medium mb-3">Review — click any round to enlarge</p>
+      <div className="flex flex-col gap-2">
         {rounds.map((r, i) => (
-          <ReviewRow key={i} index={i + 1} entry={r} />
+          <ReviewRow
+            key={i}
+            index={i + 1}
+            entry={r}
+            onSelect={() => setSelected(i)}
+          />
         ))}
       </div>
+      {selected !== null && rounds[selected] && (
+        <ReviewModal
+          entry={rounds[selected]!}
+          index={selected + 1}
+          onClose={() => setSelected(null)}
+        />
+      )}
     </div>
   );
 }
@@ -552,27 +566,37 @@ function ReviewGallery({ rounds }: { rounds: RoundHistoryEntry[] }) {
 function ReviewRow({
   index,
   entry,
+  onSelect,
 }: {
   index: number;
   entry: RoundHistoryEntry;
+  onSelect: () => void;
 }) {
   const leftIsAi = entry.truth === "left";
   const pickedLeft = entry.guess === "left";
   return (
-    <div className="flex items-center gap-3 rounded-lg border p-2">
+    <button
+      type="button"
+      onClick={onSelect}
+      className="flex items-center gap-3 rounded-lg border p-2 w-full text-left hover:bg-muted transition-colors"
+    >
+      {/* Index + correctness on the left */}
+      <div className="flex items-center gap-2 shrink-0 w-14 justify-center">
+        <span className="text-sm font-semibold text-muted-foreground tabular-nums">
+          {index}
+        </span>
+        {entry.correct ? (
+          <Check className="size-5 text-emerald-500" />
+        ) : (
+          <X className="size-5 text-destructive" />
+        )}
+      </div>
+      {/* Thumbnails */}
       <div className="flex gap-2 flex-1 min-w-0">
         <ReviewThumb id={entry.leftId} isAi={leftIsAi} picked={pickedLeft} />
         <ReviewThumb id={entry.rightId} isAi={!leftIsAi} picked={!pickedLeft} />
       </div>
-      <div className="flex items-center gap-2 shrink-0">
-        <span className="text-xs text-muted-foreground w-6">#{index}</span>
-        {entry.correct ? (
-          <Check className="size-4 text-emerald-500" />
-        ) : (
-          <X className="size-4 text-destructive" />
-        )}
-      </div>
-    </div>
+    </button>
   );
 }
 
@@ -586,29 +610,140 @@ function ReviewThumb({
   picked: boolean;
 }) {
   return (
-    <div className="relative flex-1">
+    <div
+      className={`relative flex-1 rounded overflow-hidden ring-1 ${
+        picked
+          ? isAi
+            ? "ring-2 ring-emerald-500"
+            : "ring-2 ring-destructive"
+          : "ring-foreground/10"
+      }`}
+    >
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
         src={`/api/img/${id}`}
         alt=""
-        className="w-full h-16 object-cover rounded"
+        className="w-full h-14 object-cover"
         draggable={false}
       />
-      <div className="absolute top-1 left-1 flex gap-1">
+      <div className="absolute bottom-0 left-0 right-0 flex items-center justify-between px-1.5 py-0.5 bg-gradient-to-t from-black/70 to-transparent">
+        <span
+          className={`text-[11px] font-bold ${isAi ? "text-blue-300" : "text-emerald-300"}`}
+        >
+          {isAi ? "AI" : "REAL"}
+        </span>
+        {picked && (
+          <span className="text-[10px] font-medium text-white/80">YOUR PICK</span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ReviewModal({
+  entry,
+  index,
+  onClose,
+}: {
+  entry: RoundHistoryEntry;
+  index: number;
+  onClose: () => void;
+}) {
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, [onClose]);
+
+  const leftIsAi = entry.truth === "left";
+  const pickedLeft = entry.guess === "left";
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+      onClick={onClose}
+    >
+      <div
+        className="relative bg-background rounded-xl shadow-xl max-w-3xl w-full p-4"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-3">
+            <span className="text-lg font-semibold">Round {index}</span>
+            {entry.correct ? (
+              <span className="flex items-center gap-1 text-emerald-500 font-medium">
+                <Check className="size-5" /> Correct
+              </span>
+            ) : (
+              <span className="flex items-center gap-1 text-destructive font-medium">
+                <X className="size-5" /> Incorrect
+              </span>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="p-1 rounded hover:bg-muted transition-colors"
+            aria-label="Close"
+          >
+            <X className="size-5" />
+          </button>
+        </div>
+
+        {/* Side-by-side images */}
+        <div className="grid grid-cols-2 gap-3">
+          <ReviewModalImage id={entry.leftId} isAi={leftIsAi} picked={pickedLeft} side="Left" />
+          <ReviewModalImage id={entry.rightId} isAi={!leftIsAi} picked={!pickedLeft} side="Right" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ReviewModalImage({
+  id,
+  isAi,
+  picked,
+  side,
+}: {
+  id: string;
+  isAi: boolean;
+  picked: boolean;
+  side: string;
+}) {
+  return (
+    <div
+      className={`relative rounded-lg overflow-hidden ring-2 ${
+        picked
+          ? isAi
+            ? "ring-emerald-500"
+            : "ring-destructive"
+          : "ring-transparent"
+      }`}
+    >
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={`/api/img/${id}`}
+        alt={`${side} image`}
+        className="w-full aspect-[4/3] object-cover"
+        draggable={false}
+      />
+      <div className="absolute top-2 left-2">
         <Badge
           variant={isAi ? "default" : "secondary"}
-          className="text-[10px] h-4 px-1"
+          className="text-xs"
         >
           {isAi ? "AI" : "Real"}
         </Badge>
       </div>
       {picked && (
-        <div className="absolute top-1 right-1">
-          {isAi ? (
-            <Check className="size-3.5 text-emerald-500 bg-background/80 rounded" />
-          ) : (
-            <X className="size-3.5 text-destructive bg-background/80 rounded" />
-          )}
+        <div className="absolute top-2 right-2">
+          <Badge variant="outline" className="text-xs bg-background/80">
+            Your pick
+          </Badge>
         </div>
       )}
     </div>

@@ -49,6 +49,9 @@ beforeEach(async () => {
       retired INTEGER DEFAULT false NOT NULL, indexed_at INTEGER NOT NULL,
       updated_at INTEGER NOT NULL)`,
     "CREATE UNIQUE INDEX images_sha1_unique ON images (sha1)",
+    "DROP TABLE IF EXISTS rejected_images",
+    `CREATE TABLE rejected_images (sha1 TEXT PRIMARY KEY NOT NULL,
+      label TEXT NOT NULL, source_key TEXT, rejected_at INTEGER NOT NULL)`,
   ]);
   for (const k of Object.keys(s3State)) delete s3State[k];
   delete process.env.ROA_S3_BUCKET;
@@ -72,7 +75,7 @@ describe("catalog: reindexFromS3", () => {
   it("is a no-op when S3 is not configured", async () => {
     const { reindexFromS3 } = await import("./catalog");
     const res = await reindexFromS3();
-    expect(res).toEqual({ added: 0, duplicates: 0, skipped: 0, removed: 0 });
+    expect(res).toEqual({ added: 0, duplicates: 0, skipped: 0, removed: 0, rejected: 0 });
   });
 
   it("indexes images from the configured S3 prefixes", async () => {

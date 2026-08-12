@@ -154,6 +154,20 @@ ROA_DB_URL=...
 | `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` / `AWS_SESSION_TOKEN` | — | Standard AWS SDK credential chain (used iff `ROA_S3_BUCKET` is set; IAM role also works) |
 | `ROA_ADMIN_PASSWORD` | — | When set, the admin portal at `/admin` and `/api/admin/*` are enabled (shared password) |
 
+### S3 credentials (this deployment)
+
+Credentials live in `/tmp/s3` — line 1 is the access key, line 2 is the
+secret key. Endpoint is `s3.thekao.cloud`, bucket is `ai-or-not`
+(URL form: `s3://s3.thekao.cloud/ai-or-not`).
+
+```bash
+export AWS_ACCESS_KEY_ID=$(sed -n 1p /tmp/s3)
+export AWS_SECRET_ACCESS_KEY=$(sed -n 2p /tmp/s3)
+export ROA_S3_ENDPOINT=https://s3.thekao.cloud
+export ROA_S3_BUCKET=ai-or-not
+export ROA_S3_FORCE_PATH_STYLE=true
+```
+
 ## Releases
 
 Releases are automated via [release-please](https://github.com/googleapis/release-please)
