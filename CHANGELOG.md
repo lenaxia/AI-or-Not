@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.4.0](https://github.com/lenaxia/AI-or-Not/compare/v0.3.1...v0.4.0) (2026-08-12)
+
+
+### Features
+
+* **admin:** pending-review moderation queue, routes, and UI ([#37](https://github.com/lenaxia/AI-or-Not/issues/37)) ([9c3671f](https://github.com/lenaxia/AI-or-Not/commit/9c3671f3d66c4c4572009286ac3af90701949e54))
+
+
+### Bug Fixes
+
+* **images:** show images in original aspect ratio, no cropping ([9b2e8a9](https://github.com/lenaxia/AI-or-Not/commit/9b2e8a9688642212c80c89c680f94bc717fd6899))
+
 ## [0.3.1](https://github.com/lenaxia/AI-or-Not/compare/v0.3.0...v0.3.1) (2026-08-12)
 
 
