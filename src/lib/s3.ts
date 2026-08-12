@@ -89,8 +89,21 @@ async function streamToBuffer(stream: Readable | ReadableStream): Promise<Buffer
   return Buffer.concat(chunks);
 }
 
-/** List all image objects under a prefix. Paginated. */
-export async function listS3Images(prefix: string): Promise<S3Image[]> {
+/**
+ * List image objects under a prefix.
+ *
+ * When `opts.limit` is set, passes it as `MaxKeys` to a single
+ * ListObjectsV2 call and returns immediately (no pagination loop) — use
+ * this for bounded queries like the pending-review queue where you only
+ * need the first page.
+ *
+ * When `opts.limit` is unset, paginates through all pages (existing
+ * behavior — used by reindex which needs the full set).
+ */
+export async function listS3Images(
+  prefix: string,
+  opts?: { limit?: number },
+): Promise<S3Image[]> {
   const c = cfg()!;
   const s3 = getClient();
   const out: S3Image[] = [];
@@ -101,6 +114,7 @@ export async function listS3Images(prefix: string): Promise<S3Image[]> {
         Bucket: c.bucket,
         Prefix: prefix,
         ContinuationToken: token,
+        MaxKeys: opts?.limit,
       }),
     );
     for (const obj of (res.Contents ?? []) as _Object[]) {
@@ -115,6 +129,8 @@ export async function listS3Images(prefix: string): Promise<S3Image[]> {
         etag: (obj.ETag ?? "").replace(/^"|"$/g, ""),
       });
     }
+    // Stop after one page when a limit is requested.
+    if (opts?.limit) break;
     token = res.IsTruncated ? res.NextContinuationToken : undefined;
   } while (token);
   return out;

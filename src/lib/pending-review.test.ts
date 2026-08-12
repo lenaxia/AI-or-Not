@@ -21,10 +21,12 @@ interface S3Obj {
 const s3Store: Record<string, S3Obj> = {};
 const s3CopyLog: Array<{ src: string; dst: string }> = [];
 const s3DeleteLog: string[] = [];
+const s3ListCalls: Array<{ prefix: string; limit?: number }> = [];
 
 vi.mock("./s3", () => ({
   s3Enabled: () => !!process.env.ROA_S3_BUCKET,
-  listS3Images: async (prefix: string) => {
+  listS3Images: async (prefix: string, opts?: { limit?: number }) => {
+    s3ListCalls.push({ prefix, limit: opts?.limit });
     const out: Array<{ key: string; ext: string; mime: string; etag: string; size: number }> = [];
     for (const [key, obj] of Object.entries(s3Store)) {
       if (!key.startsWith(prefix)) continue;
@@ -36,7 +38,8 @@ vi.mock("./s3", () => ({
       if (!mime) continue;
       out.push({ key, ext, mime, etag: obj.etag, size: obj.bytes.length });
     }
-    return out.sort((a, b) => a.key.localeCompare(b.key));
+    out.sort((a, b) => a.key.localeCompare(b.key));
+    return opts?.limit ? out.slice(0, opts.limit) : out;
   },
   getS3Object: async (key: string) => {
     const obj = s3Store[key];
@@ -80,6 +83,7 @@ beforeEach(async () => {
   for (const k of Object.keys(s3Store)) delete s3Store[k];
   s3CopyLog.length = 0;
   s3DeleteLog.length = 0;
+  s3ListCalls.length = 0;
 
   process.env.ROA_S3_BUCKET = "test-bucket";
   process.env.ROA_S3_PREFIX_AI = "ai/";
@@ -234,6 +238,22 @@ describe("pending-review: listPending", () => {
     const { listPending } = await import("./pending-review");
     expect(await listPending()).toEqual([]);
   });
+
+  it("limit caps the number of items returned and passes MaxKeys to S3", async () => {
+    const { listPending } = await import("./pending-review");
+    for (let i = 0; i < 10; i++) {
+      s3Store[pendingKey("real", `img${i}.jpg`)] = {
+        bytes: JPG(`real-${i}`),
+        etag: `e-${i}`,
+      };
+    }
+    const limited = await listPending("real", 3);
+    expect(limited).toHaveLength(3);
+    // The limit must reach listS3Images so S3 gets MaxKeys (not a full scan).
+    const call = s3ListCalls.find((c) => c.prefix === "pending-review/real/");
+    expect(call).toBeDefined();
+    expect(call!.limit).toBe(3);
+  });
 });
 
 describe("pending-review: reviewPending (accept)", () => {
@@ -272,6 +292,28 @@ describe("pending-review: reviewPending (accept)", () => {
     expect(res.ok).toBe(true);
     expect(res.promotedTo).toMatch(/^real\//);
     expect(await getCounts()).toEqual({ ai: 0, real: 1 });
+  });
+
+  it("accept records the locator pointing to the accepted key, not the deleted pending key", async () => {
+    const { reviewPending } = await import("./pending-review");
+    const { getEntry, readImageData } = await import("./catalog");
+    const { sha1Hex, imageIdFromSha1 } = await import("./image-hash");
+    const bytes = JPG("locator-check");
+    const sha = sha1Hex(bytes);
+    const id = imageIdFromSha1(sha);
+    const key = pendingKey("ai", "loc.jpg");
+    s3Store[key] = { bytes, etag: "e-loc" };
+
+    const res = await reviewPending(key, "ai", "accept");
+    expect(res.ok).toBe(true);
+    // The DB row's locator must point at the LIVE accepted object…
+    const entry = await getEntry(id);
+    expect(entry).toBeDefined();
+    expect(entry!.locator).toContain(`ai/${sha}`);
+    expect(entry!.locator).not.toContain("pending-review");
+    // …and reading the image bytes must succeed (not 404 on a deleted key).
+    const data = await readImageData(entry!);
+    expect(data.length).toBeGreaterThan(0);
   });
 
   it("accept reports duplicate when sha1 is already in rotation (still clears pending)", async () => {

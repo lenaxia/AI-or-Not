@@ -91,15 +91,23 @@ export interface PendingItem {
   etag: string;
 }
 
-/** List candidate images under pending-review/{ai,real}/. */
-export async function listPending(label?: Label): Promise<PendingItem[]> {
+/**
+ * List candidate images under pending-review/{ai,real}/.
+ *
+ * When `limit` is set, passes it as MaxKeys to S3 so only one page is
+ * fetched (bounded latency on large queues). Without it, enumerates all.
+ */
+export async function listPending(
+  label?: Label,
+  limit?: number,
+): Promise<PendingItem[]> {
   if (!process.env.ROA_S3_BUCKET?.trim()) return [];
   const root = pendingPrefixRoot();
   const labels: Label[] = label ? [label] : ["ai", "real"];
   const out: PendingItem[] = [];
   for (const l of labels) {
     const prefix = `${root}${l}/`;
-    const objects = await listS3Images(prefix);
+    const objects = await listS3Images(prefix, limit ? { limit } : undefined);
     for (const obj of objects) {
       out.push({
         key: obj.key,
@@ -109,9 +117,10 @@ export async function listPending(label?: Label): Promise<PendingItem[]> {
         etag: obj.etag,
         size: 0,
       });
+      if (limit && out.length >= limit) return out;
     }
   }
-  return out.sort((a, b) => a.key.localeCompare(b.key));
+  return out;
 }
 
 // ---------------------------------------------------------------------------
@@ -153,19 +162,18 @@ export async function reviewPending(
     return { ok: true, sha1, action };
   }
 
-  // accept
-  const { duplicate, id } = await indexPromoted(label, key, bytes, sha1);
+  // accept — compute the destination key FIRST so the DB row's locator
+  // points at the live accepted object (not the pending key we delete).
+  const ext = extOf(key);
+  const dstKey = `${acceptedPrefix(label)}${sha1}${ext}`;
+  const { duplicate } = await indexPromoted(label, dstKey, bytes, sha1);
   if (!duplicate) {
-    const ext = extOf(key);
-    const dstKey = `${acceptedPrefix(label)}${sha1}${ext}`;
     await copyS3Object(key, dstKey);
-    await deleteS3Object(key);
-    void id;
-    return { ok: true, sha1, action, duplicate: false, promotedTo: dstKey };
   }
-  // Already in rotation — just clear it from pending.
   await deleteS3Object(key);
-  return { ok: true, sha1, action, duplicate: true };
+  return duplicate
+    ? { ok: true, sha1, action, duplicate: true }
+    : { ok: true, sha1, action, duplicate: false, promotedTo: dstKey };
 }
 
 /**

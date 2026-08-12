@@ -555,6 +555,43 @@ export async function deleteImage(imageId: string): Promise<boolean> {
   return ((res as unknown as { rowsAffected?: number }).rowsAffected ?? 0) > 0;
 }
 
+/**
+ * Hard-delete a row AND remove the underlying source file/S3 object.
+ * Best-effort on the source: if the file/object is already gone, the row
+ * is still deleted. Returns { rowDeleted, sourceDeleted }.
+ */
+export async function deleteImageAndSource(
+  imageId: string,
+): Promise<{ rowDeleted: boolean; sourceDeleted: boolean; sourceError?: string }> {
+  // Read the row first to get the source + locator.
+  const rows = await db.select().from(images).where(eq(images.id, imageId)).limit(1);
+  const row = rows[0];
+  let sourceDeleted = false;
+  let sourceError: string | undefined;
+  if (row) {
+    if (row.source === "fs") {
+      try {
+        await fs.unlink(row.locator);
+        sourceDeleted = true;
+      } catch (err) {
+        sourceError = (err as Error).message;
+      }
+    } else if (row.source === "s3") {
+      try {
+        const { parseLocator } = await import("./s3");
+        const { key } = parseLocator(row.locator);
+        const { deleteS3Object } = await import("./s3");
+        await deleteS3Object(key);
+        sourceDeleted = true;
+      } catch (err) {
+        sourceError = (err as Error).message;
+      }
+    }
+  }
+  const rowDeleted = await deleteImage(imageId);
+  return { rowDeleted, sourceDeleted, sourceError };
+}
+
 /** Paginated listing for the admin gallery. */
 export async function listImages(opts: {
   label?: Label;

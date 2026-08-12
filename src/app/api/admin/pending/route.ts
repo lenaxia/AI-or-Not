@@ -20,10 +20,10 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  const all = await listPending(parsed.data.label);
-  const total = all.length;
-  const start = (parsed.data.page - 1) * PAGE_SIZE;
-  const items = all.slice(start, start + PAGE_SIZE);
+  // Bounded S3 query: pass PAGE_SIZE as MaxKeys so we fetch one page,
+  // not the entire prefix. The review UI drains the queue by deleting
+  // items as they're triaged, so page=1 always surfaces the next batch.
+  const items = await listPending(parsed.data.label, PAGE_SIZE);
   return Response.json({
     items: items.map((i) => ({
       key: i.key,
@@ -31,8 +31,10 @@ export async function GET(request: NextRequest) {
       ext: i.ext,
       mime: i.mime,
     })),
-    total,
-    page: parsed.data.page,
+    total: items.length,
+    page: 1,
     pageSize: PAGE_SIZE,
+    hasMore: items.length === PAGE_SIZE,
   });
 }
+

@@ -234,6 +234,7 @@ function GalleryView() {
   const [labelFilter, setLabelFilter] = useState<Label | undefined>(undefined);
   const [statusFilter, setStatusFilter] = useState<"active" | "retired" | undefined>(undefined);
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(100);
   const [loading, setLoading] = useState(false);
   const [uploadMsg, setUploadMsg] = useState<string | null>(null);
   const [uploadLabel, setUploadLabel] = useState<Label>("ai");
@@ -241,7 +242,7 @@ function GalleryView() {
 
   const load = useCallback(async () => {
     setLoading(true);
-    const params = new URLSearchParams({ page: String(page) });
+    const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
     if (labelFilter) params.set("label", labelFilter);
     if (statusFilter) params.set("status", statusFilter);
     try {
@@ -250,7 +251,7 @@ function GalleryView() {
     } finally {
       setLoading(false);
     }
-  }, [page, labelFilter, statusFilter]);
+  }, [page, pageSize, labelFilter, statusFilter]);
 
   useEffect(() => {
     let cancelled = false;
@@ -283,7 +284,7 @@ function GalleryView() {
     }
   };
 
-  const act = async (id: string, action: "retire" | "reactivate" | "delete") => {
+  const act = async (id: string, action: "retire" | "reactivate" | "delete" | "delete-source") => {
     await fetch("/api/admin/images", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -364,8 +365,21 @@ function GalleryView() {
         <FilterPill active={statusFilter === "retired"} onClick={() => { setStatusFilter("retired"); setPage(1); }}>
           Retired
         </FilterPill>
-        <span className="ml-auto text-sm text-muted-foreground">
-          {data ? `${data.total} image${data.total === 1 ? "" : "s"}` : ""}
+        <span className="ml-auto flex items-center gap-2">
+          <span className="text-sm text-muted-foreground">
+            {data ? `${data.total} image${data.total === 1 ? "" : "s"}` : ""}
+          </span>
+          <select
+            value={pageSize}
+            onChange={(e) => { setPageSize(Number(e.target.value)); setPage(1); }}
+            className="h-8 rounded-md border bg-background px-2 text-sm"
+            title="Images per page"
+          >
+            <option value={24}>24 / page</option>
+            <option value={50}>50 / page</option>
+            <option value={100}>100 / page</option>
+            <option value={200}>200 / page</option>
+          </select>
         </span>
       </div>
 
@@ -443,7 +457,7 @@ function ImageTile({
   onAct,
 }: {
   row: ImageRow;
-  onAct: (id: string, action: "retire" | "reactivate" | "delete") => void;
+  onAct: (id: string, action: "retire" | "reactivate" | "delete" | "delete-source") => void;
 }) {
   const foolRate =
     row.appearances > 0 ? Math.round((row.fools / row.appearances) * 100) : null;
@@ -497,7 +511,15 @@ function ImageTile({
             size="sm"
             className="h-7 px-2 text-xs text-destructive hover:text-destructive"
             onClick={() => {
-              if (confirm("Hard-delete this image row? The source file is not touched.")) {
+              const choice = confirm(
+                "Delete options:\n\n" +
+                "OK = Delete row + source file/object (permanent)\n" +
+                "Cancel = Keep the source, just remove from the catalog\n\n" +
+                "(Click the X below to dismiss without deleting)",
+              );
+              if (choice) {
+                onAct(row.id, "delete-source");
+              } else {
                 onAct(row.id, "delete");
               }
             }}
