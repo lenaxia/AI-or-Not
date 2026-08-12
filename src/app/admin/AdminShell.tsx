@@ -449,12 +449,12 @@ function ImageTile({
     row.appearances > 0 ? Math.round((row.fools / row.appearances) * 100) : null;
   return (
     <div className="rounded-lg border overflow-hidden">
-      <div className="relative aspect-square bg-muted">
+      <div className="relative bg-muted flex items-center justify-center" style={{ minHeight: "100px" }}>
         {/* eslint-disable-next-line @next/next/no-img-element -- admin-only, opaque id */}
         <img
           src={`/api/img/${row.id}`}
           alt={row.id}
-          className="absolute inset-0 size-full object-cover"
+          className="w-full max-h-48 object-contain"
           draggable={false}
         />
         <div className="absolute top-2 left-2 flex gap-1">
@@ -768,7 +768,7 @@ function EloColumn({ title, rows }: { title: string; rows: ImageRow[] }) {
               <img
                 src={`/api/img/${r.id}`}
                 alt={r.id}
-                className="size-10 rounded object-cover bg-muted"
+                className="w-10 h-10 rounded object-contain bg-muted"
                 draggable={false}
               />
               <div className="flex-1 min-w-0">

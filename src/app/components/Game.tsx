@@ -349,7 +349,7 @@ function ClickableImagePanel({
       }`}
     >
       <div
-        className={`relative aspect-[4/3] w-full overflow-hidden rounded-xl ring-1 transition-all bg-muted ${
+        className={`relative w-full max-h-[60vh] overflow-hidden rounded-xl ring-1 transition-all bg-muted flex items-center justify-center ${
           disabled
             ? "ring-foreground/10"
             : "ring-foreground/10 group-hover:ring-2 group-hover:ring-primary group-focus-visible:ring-2 group-focus-visible:ring-primary"
@@ -360,7 +360,7 @@ function ClickableImagePanel({
           <img
             src={`/api/img/${id}`}
             alt={`${side} image`}
-            className="absolute inset-0 size-full object-cover"
+            className="w-full max-h-[60vh] object-contain"
             draggable={false}
           />
         ) : (
@@ -623,7 +623,7 @@ function ReviewThumb({
       <img
         src={`/api/img/${id}`}
         alt=""
-        className="w-full h-14 object-cover"
+        className="w-full h-16 object-contain bg-muted"
         draggable={false}
       />
       <div className="absolute bottom-0 left-0 right-0 flex items-center justify-between px-1.5 py-0.5 bg-gradient-to-t from-black/70 to-transparent">
@@ -728,7 +728,7 @@ function ReviewModalImage({
       <img
         src={`/api/img/${id}`}
         alt={`${side} image`}
-        className="w-full aspect-[4/3] object-cover"
+        className="w-full max-h-[50vh] object-contain bg-muted"
         draggable={false}
       />
       <div className="absolute top-2 left-2">
