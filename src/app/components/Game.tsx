@@ -626,14 +626,20 @@ function ReviewThumb({
         className="w-full h-16 object-contain bg-muted"
         draggable={false}
       />
-      <div className="absolute bottom-0 left-0 right-0 flex items-center justify-between px-1.5 py-0.5 bg-gradient-to-t from-black/70 to-transparent">
+      <div className="absolute bottom-1 left-1 flex items-center gap-1">
         <span
-          className={`text-[11px] font-bold ${isAi ? "text-blue-300" : "text-emerald-300"}`}
+          className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
+            isAi
+              ? "bg-blue-600 text-white"
+              : "bg-emerald-600 text-white"
+          }`}
         >
           {isAi ? "AI" : "REAL"}
         </span>
         {picked && (
-          <span className="text-[10px] font-medium text-white/80">YOUR PICK</span>
+          <span className="text-[9px] font-medium px-1.5 py-0.5 rounded-full bg-amber-500 text-white">
+            PICKED
+          </span>
         )}
       </div>
     </div>
@@ -662,39 +668,39 @@ function ReviewModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+      className="fixed inset-0 z-50 flex items-start sm:items-center justify-center bg-black/70 p-2 sm:p-4 overflow-y-auto"
       onClick={onClose}
     >
       <div
-        className="relative bg-background rounded-xl shadow-xl max-w-3xl w-full p-4"
+        className="relative bg-background rounded-xl shadow-xl w-full max-w-3xl my-auto p-3 sm:p-4"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-3">
-            <span className="text-lg font-semibold">Round {index}</span>
+        <div className="flex items-center justify-between mb-3 sm:mb-4">
+          <div className="flex items-center gap-2 sm:gap-3">
+            <span className="text-base sm:text-lg font-semibold">Round {index}</span>
             {entry.correct ? (
-              <span className="flex items-center gap-1 text-emerald-500 font-medium">
-                <Check className="size-5" /> Correct
+              <span className="flex items-center gap-1 text-emerald-500 font-medium text-sm sm:text-base">
+                <Check className="size-4 sm:size-5" /> Correct
               </span>
             ) : (
-              <span className="flex items-center gap-1 text-destructive font-medium">
-                <X className="size-5" /> Incorrect
+              <span className="flex items-center gap-1 text-destructive font-medium text-sm sm:text-base">
+                <X className="size-4 sm:size-5" /> Incorrect
               </span>
             )}
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="p-1 rounded hover:bg-muted transition-colors"
+            className="p-1.5 rounded hover:bg-muted transition-colors shrink-0"
             aria-label="Close"
           >
             <X className="size-5" />
           </button>
         </div>
 
-        {/* Side-by-side images */}
-        <div className="grid grid-cols-2 gap-3">
+        {/* Images: stacked on mobile, side-by-side on sm+ */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3">
           <ReviewModalImage id={entry.leftId} isAi={leftIsAi} picked={pickedLeft} side="Left" />
           <ReviewModalImage id={entry.rightId} isAi={!leftIsAi} picked={!pickedLeft} side="Right" />
         </div>
@@ -728,24 +734,25 @@ function ReviewModalImage({
       <img
         src={`/api/img/${id}`}
         alt={`${side} image`}
-        className="w-full max-h-[50vh] object-contain bg-muted"
+        className="w-full max-h-[40vh] sm:max-h-[50vh] object-contain bg-muted"
         draggable={false}
       />
-      <div className="absolute top-2 left-2">
-        <Badge
-          variant={isAi ? "default" : "secondary"}
-          className="text-xs"
+      <div className="absolute top-2 left-2 flex gap-1">
+        <span
+          className={`text-xs font-bold px-2 py-0.5 rounded-full ${
+            isAi
+              ? "bg-blue-600 text-white"
+              : "bg-emerald-600 text-white"
+          }`}
         >
           {isAi ? "AI" : "Real"}
-        </Badge>
+        </span>
+        {picked && (
+          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500 text-white">
+            YOUR PICK
+          </span>
+        )}
       </div>
-      {picked && (
-        <div className="absolute top-2 right-2">
-          <Badge variant="outline" className="text-xs bg-background/80">
-            Your pick
-          </Badge>
-        </div>
-      )}
     </div>
   );
 }
