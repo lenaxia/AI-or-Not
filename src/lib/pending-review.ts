@@ -28,6 +28,24 @@ function pendingPrefixRoot(): string {
   return process.env.ROA_S3_PREFIX_PENDING?.trim() || "pending-review/";
 }
 
+/**
+ * Security boundary for the admin preview/review endpoints: returns the label
+ * iff `key` lives under `pending-review/{ai,real}/`, else null. Prevents the
+ * caller-supplied key from reaching getS3Object/copyS3Object/deleteS3Object
+ * for any object outside the staging area.
+ *
+ * Uses startsWith on the full `{root}{label}/` prefix, so path-traversal
+ * payloads like `pending-review/../../etc/passwd` fail (they don't start with
+ * `pending-review/ai/` or `pending-review/real/`).
+ */
+export function pendingKeyLabel(key: string): Label | null {
+  const root = pendingPrefixRoot();
+  for (const label of ["ai", "real"] as const) {
+    if (key.startsWith(`${root}${label}/`)) return label;
+  }
+  return null;
+}
+
 function acceptedPrefix(label: Label): string {
   return label === "ai"
     ? process.env.ROA_S3_PREFIX_AI?.trim() || "ai/"

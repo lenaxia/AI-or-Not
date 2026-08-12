@@ -30,3 +30,18 @@ export const adminImagesQuerySchema = z.object({
   status: z.enum(["active", "retired"]).optional(),
   page: z.coerce.number().int().positive().default(1),
 });
+
+export const adminPendingQuerySchema = z.object({
+  label: z.enum(["ai", "real"]).optional(),
+  page: z.coerce.number().int().positive().default(1),
+});
+
+export const adminPendingReviewSchema = z.object({
+  key: z.string().min(1),
+  label: z.enum(["ai", "real"]),
+  action: z.enum(["accept", "reject"]),
+});
+
+export const adminPendingImgQuerySchema = z.object({
+  key: z.string().min(1),
+});
