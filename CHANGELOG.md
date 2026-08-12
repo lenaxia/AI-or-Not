@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.3.0](https://github.com/lenaxia/AI-or-Not/compare/v0.2.5...v0.3.0) (2026-08-12)
+
+
+### Features
+
+* **admin:** admin portal — login, gallery + upload, ELO view ([#19](https://github.com/lenaxia/AI-or-Not/issues/19)) ([e05dbc1](https://github.com/lenaxia/AI-or-Not/commit/e05dbc1338b698f607dee72aa45a04f40bf6d4a7))
+* **catalog:** DB-backed image catalog with SHA1 dedup ([#15](https://github.com/lenaxia/AI-or-Not/issues/15)) ([32374c1](https://github.com/lenaxia/AI-or-Not/commit/32374c130bc02d0fedb0dc19dd9d3dce7cda91eb))
+* **game:** redesign — click-to-pick, no reveal, dedup, review gallery ([#34](https://github.com/lenaxia/AI-or-Not/issues/34)) ([f339eb9](https://github.com/lenaxia/AI-or-Not/commit/f339eb9161486b802ec9c1d5d923af0a49f72596))
+
 ## [0.2.5](https://github.com/lenaxia/AI-or-Not/compare/v0.2.4...v0.2.5) (2026-08-11)
 
 
