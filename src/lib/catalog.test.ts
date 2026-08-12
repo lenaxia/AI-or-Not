@@ -204,7 +204,7 @@ describe("catalog: pickByLabel & getEntry", () => {
     const first = await pickByLabel("ai");
     expect(first).toBeDefined();
     for (let i = 0; i < 50; i++) {
-      const p = await pickByLabel("ai", first!.id);
+      const p = await pickByLabel("ai", new Set([first!.id]));
       expect(p).toBeDefined();
       expect(p!.id).not.toBe(first!.id);
     }

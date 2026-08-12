@@ -6,6 +6,7 @@ import type {
   Bucket,
   LeaderboardEntry,
   LeaderboardPreview,
+  RoundHistoryEntry,
   ScoreStats,
 } from "./types";
 import type { GameState } from "./game-store";
@@ -63,6 +64,21 @@ export async function submitScore(
           (peerScores.reduce((a, b) => a + b, 0) / peerCount) * 10,
         ) / 10;
 
+  // Build the review gallery from server-stored rounds + guesses.
+  const rounds: RoundHistoryEntry[] = [];
+  for (let i = 0; i < game.rounds.length; i++) {
+    const r = game.rounds[i]!;
+    const g = game.guesses[i];
+    if (!g) break;
+    rounds.push({
+      leftId: r.leftId,
+      rightId: r.rightId,
+      truth: r.truth,
+      guess: g.guess,
+      correct: g.correct,
+    });
+  }
+
   return {
     total: peerCount,
     rank: higher + 1,
@@ -75,6 +91,7 @@ export async function submitScore(
     median: Math.round(median(peerScores) * 10) / 10,
     yourScore: score,
     distribution: buildBuckets(peers),
+    rounds,
   };
 }
 

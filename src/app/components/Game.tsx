@@ -3,12 +3,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Brain,
+  Check,
   Eye,
   EyeOff,
   Loader2,
   RefreshCw,
   RotateCcw,
   Trophy,
+  X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -23,9 +25,9 @@ import {
 } from "@/components/ui/card";
 import Distribution from "./Distribution";
 import type {
-  GuessResponse,
   LeaderboardPreview,
   Mode,
+  RoundHistoryEntry,
   RoundResponse,
   ScoreStats,
   Verdict,
@@ -34,36 +36,13 @@ import type {
 const TOTAL_ROUNDS = 10;
 const HARD_REVEAL_MS = 2000;
 
-type Phase = "start" | "loading" | "playing" | "reveal" | "finished";
-
-const VERDICTS: { value: Verdict; label: string }[] = [
-  { value: "left", label: "← Left is AI" },
-  { value: "right", label: "Right is AI →" },
-  { value: "both", label: "Both are AI" },
-  { value: "none", label: "Neither is AI" },
-];
-
-function truthLabels(truth: Verdict): { left: "ai" | "real"; right: "ai" | "real" } {
-  switch (truth) {
-    case "left":
-      return { left: "ai", right: "real" };
-    case "right":
-      return { left: "real", right: "ai" };
-    case "both":
-      return { left: "ai", right: "ai" };
-    case "none":
-      return { left: "real", right: "real" };
-  }
-}
+type Phase = "start" | "loading" | "playing" | "finished";
 
 export default function Game() {
   const [phase, setPhase] = useState<Phase>("start");
   const [mode, setMode] = useState<Mode>("easy");
   const [round, setRound] = useState(0);
-  const [correct, setCorrect] = useState(0);
   const [current, setCurrent] = useState<RoundResponse | null>(null);
-  const [result, setResult] = useState<GuessResponse | null>(null);
-  const [guess, setGuess] = useState<Verdict | null>(null);
   const [hidden, setHidden] = useState(false);
   const [stats, setStats] = useState<ScoreStats | null>(null);
   const [preview, setPreview] = useState<LeaderboardPreview | null>(null);
@@ -71,15 +50,6 @@ export default function Game() {
   const [busy, setBusy] = useState(false);
   const gameTokenRef = useRef<string | null>(null);
   const hardTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const loadPreview = useCallback(async () => {
-    try {
-      const res = await fetch("/api/leaderboard");
-      if (res.ok) setPreview(await res.json());
-    } catch {
-      /* preview is non-critical */
-    }
-  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -105,10 +75,18 @@ export default function Game() {
   useEffect(() => () => clearHardTimer(), []);
 
   const fetchRound = useCallback(async (m: Mode) => {
+    const gameToken = gameTokenRef.current;
+    if (!gameToken) {
+      setError("Game session lost. Please restart.");
+      setPhase("start");
+      return null;
+    }
     setBusy(true);
     setError(null);
     try {
-      const res = await fetch(`/api/game/round?mode=${m}`);
+      const res = await fetch(
+        `/api/game/round?mode=${m}&gameToken=${encodeURIComponent(gameToken)}`,
+      );
       const data = await res.json();
       if (!res.ok) {
         setError(data.message ?? "Could not load images.");
@@ -117,8 +95,6 @@ export default function Game() {
         return null;
       }
       setCurrent(data as RoundResponse);
-      setGuess(null);
-      setResult(null);
       if (m === "hard") {
         setHidden(false);
         clearHardTimer();
@@ -139,11 +115,8 @@ export default function Game() {
   const startGame = async (m: Mode) => {
     setMode(m);
     setRound(1);
-    setCorrect(0);
     setPhase("loading");
     setError(null);
-    // Issue a server-side game session. The server will track the score;
-    // the client just holds the token.
     try {
       const startRes = await fetch("/api/game/start", {
         method: "POST",
@@ -167,7 +140,8 @@ export default function Game() {
     if (ok) setPhase("playing");
   };
 
-  const submitGuess = async (v: Verdict) => {
+  // Click an image = submit that side as the AI guess.
+  const pickSide = async (v: Verdict) => {
     if (!current || phase !== "playing" || busy) return;
     const gameToken = gameTokenRef.current;
     if (!gameToken) {
@@ -176,7 +150,6 @@ export default function Game() {
       return;
     }
     setBusy(true);
-    setGuess(v);
     clearHardTimer();
     try {
       const res = await fetch("/api/game/guess", {
@@ -184,27 +157,15 @@ export default function Game() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ token: current.token, guess: v, gameToken }),
       });
-      const data = (await res.json()) as GuessResponse;
-      setResult(data);
-      // Use the server's authoritative count, not a local increment.
-      setCorrect(data.correctSoFar);
-      setPhase("reveal");
+      await res.json();
+      // No truth/correct feedback — immediately advance.
     } catch {
       setError("Network error submitting guess.");
-    } finally {
-      setBusy(false);
     }
-  };
 
-  const nextRound = async () => {
     if (round >= TOTAL_ROUNDS) {
+      // Game over — submit to leaderboard.
       setPhase("loading");
-      const gameToken = gameTokenRef.current;
-      if (!gameToken) {
-        setError("Game session lost.");
-        setPhase("start");
-        return;
-      }
       try {
         const res = await fetch("/api/leaderboard", {
           method: "POST",
@@ -220,28 +181,35 @@ export default function Game() {
         setStats(data as ScoreStats);
         setPhase("finished");
         gameTokenRef.current = null;
-        void loadPreview();
+        // Refresh preview.
+        (async () => {
+          try {
+            const p = await fetch("/api/leaderboard");
+            if (p.ok) setPreview(await p.json());
+          } catch { /* non-critical */ }
+        })();
       } catch {
         setError("Could not save score.");
         setPhase("finished");
       }
+      setBusy(false);
       return;
     }
+
+    // Next round.
     setRound((r) => r + 1);
     setPhase("loading");
     const ok = await fetchRound(mode);
     if (ok) setPhase("playing");
+    setBusy(false);
   };
 
   const restart = () => {
     clearHardTimer();
     setPhase("start");
     setCurrent(null);
-    setResult(null);
     setStats(null);
-    setGuess(null);
     setRound(0);
-    setCorrect(0);
     setHidden(false);
     gameTokenRef.current = null;
   };
@@ -264,45 +232,36 @@ export default function Game() {
     return (
       <FinishedScreen
         stats={stats}
-        correct={correct}
-        total={TOTAL_ROUNDS}
         mode={mode}
         onRestart={restart}
       />
     );
   }
 
-  // ---------- PLAYING / REVEAL / LOADING ----------
-  const truth = result?.truth;
-  const labels = truth ? truthLabels(truth) : null;
-  const showTruth = phase === "reveal";
-
+  // ---------- PLAYING / LOADING ----------
   return (
     <div className="w-full max-w-5xl mx-auto px-4 py-6">
       <Header
         round={round}
         total={TOTAL_ROUNDS}
-        correct={correct}
         mode={mode}
         onQuit={restart}
       />
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-6">
-        <ImagePanel
+        <ClickableImagePanel
           id={current?.leftId}
-          side="Left"
+          side="left"
           hidden={hidden && phase === "playing"}
-          showTruth={showTruth}
-          isAi={labels?.left === "ai"}
-          guessedAi={guess === "left" || guess === "both"}
+          disabled={busy || phase !== "playing"}
+          onPick={() => void pickSide("left")}
         />
-        <ImagePanel
+        <ClickableImagePanel
           id={current?.rightId}
-          side="Right"
+          side="right"
           hidden={hidden && phase === "playing"}
-          showTruth={showTruth}
-          isAi={labels?.right === "ai"}
-          guessedAi={guess === "right" || guess === "both"}
+          disabled={busy || phase !== "playing"}
+          onPick={() => void pickSide("right")}
         />
       </div>
 
@@ -310,7 +269,7 @@ export default function Game() {
         {phase === "playing" ? (
           hidden ? (
             <p className="text-center text-sm text-muted-foreground h-9 flex items-center justify-center gap-2">
-              <EyeOff className="size-4" /> Images hidden — guess from memory!
+              <EyeOff className="size-4" /> Images hidden — pick from memory!
             </p>
           ) : mode === "hard" ? (
             <p className="text-center text-sm text-amber-600 dark:text-amber-500 h-9 flex items-center justify-center gap-2">
@@ -318,51 +277,15 @@ export default function Game() {
             </p>
           ) : (
             <p className="text-center text-sm text-muted-foreground h-9 flex items-center justify-center">
-              Which image(s) were AI-generated?
+              Click the image you think is AI-generated
             </p>
           )
-        ) : showTruth && result ? (
-          <div className="text-center h-9 flex items-center justify-center">
-            <Badge variant={result.correct ? "default" : "destructive"}>
-              {result.correct ? "Correct!" : "Wrong"}
-            </Badge>
-            <span className="ml-3 text-sm text-muted-foreground">
-              Answer:{" "}
-              {truth === "left" && "Left was AI"}
-              {truth === "right" && "Right was AI"}
-              {truth === "both" && "Both were AI"}
-              {truth === "none" && "Neither was AI"}
-            </span>
-          </div>
         ) : (
           <div className="h-9 flex items-center justify-center">
             <Loader2 className="size-5 animate-spin text-muted-foreground" />
           </div>
         )}
       </div>
-
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-4">
-        {VERDICTS.map((v) => (
-          <Button
-            key={v.value}
-            variant="outline"
-            size="lg"
-            disabled={phase !== "playing" || busy}
-            onClick={() => void submitGuess(v.value)}
-            className="h-12"
-          >
-            {v.label}
-          </Button>
-        ))}
-      </div>
-
-      {phase === "reveal" && (
-        <div className="mt-6 flex justify-center">
-          <Button onClick={() => void nextRound()} size="lg" className="min-w-40">
-            {round >= TOTAL_ROUNDS ? "See results" : "Next round"}
-          </Button>
-        </div>
-      )}
     </div>
   );
 }
@@ -372,13 +295,11 @@ export default function Game() {
 function Header({
   round,
   total,
-  correct,
   mode,
   onQuit,
 }: {
   round: number;
   total: number;
-  correct: number;
   mode: Mode;
   onQuit: () => void;
 }) {
@@ -396,43 +317,46 @@ function Header({
         <span>
           Round {round} / {total}
         </span>
-        <span>
-          Score: {correct}/{total}
-        </span>
       </div>
       <Progress value={(round / total) * 100} />
     </div>
   );
 }
 
-function ImagePanel({
+function ClickableImagePanel({
   id,
   side,
   hidden,
-  showTruth,
-  isAi,
-  guessedAi,
+  disabled,
+  onPick,
 }: {
   id?: string;
-  side: string;
+  side: "left" | "right";
   hidden: boolean;
-  showTruth: boolean;
-  isAi?: boolean;
-  guessedAi?: boolean;
+  disabled: boolean;
+  onPick: () => void;
 }) {
   return (
-    <div className="relative">
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={onPick}
+      aria-label={`Pick ${side} image as AI`}
+      className={`group relative block w-full text-left transition-all ${
+        disabled
+          ? "cursor-default"
+          : "cursor-pointer hover:scale-[1.01] active:scale-[0.99]"
+      }`}
+    >
       <div
-        className={`relative aspect-[4/3] w-full overflow-hidden rounded-xl ring-1 transition-colors bg-muted ${
-          showTruth
-            ? isAi
-              ? "ring-emerald-500 ring-2"
-              : "ring-2 ring-zinc-400"
-            : "ring-foreground/10"
+        className={`relative aspect-[4/3] w-full overflow-hidden rounded-xl ring-1 transition-all bg-muted ${
+          disabled
+            ? "ring-foreground/10"
+            : "ring-foreground/10 group-hover:ring-2 group-hover:ring-primary group-focus-visible:ring-2 group-focus-visible:ring-primary"
         }`}
       >
         {id && !hidden ? (
-          // eslint-disable-next-line @next/next/no-img-element -- opaque server-proxied image; next/image adds no value here
+          // eslint-disable-next-line @next/next/no-img-element -- opaque server-proxied image
           <img
             src={`/api/img/${id}`}
             alt={`${side} image`}
@@ -451,21 +375,15 @@ function ImagePanel({
             )}
           </div>
         )}
-        {showTruth && (
-          <div className="absolute top-2 left-2">
-            <Badge variant={isAi ? "default" : "secondary"}>
-              {isAi ? "AI" : "Real"}
-            </Badge>
+        {!disabled && (
+          <div className="absolute inset-0 bg-primary/0 group-hover:bg-primary/5 transition-colors flex items-center justify-center">
+            <span className="opacity-0 group-hover:opacity-100 transition-opacity text-sm font-medium bg-background/80 rounded-full px-3 py-1">
+              {side === "left" ? "← This is AI" : "This is AI →"}
+            </span>
           </div>
         )}
       </div>
-      <div className="mt-2 flex items-center justify-between">
-        <span className="text-sm font-medium">{side}</span>
-        {guessedAi && showTruth && (
-          <span className="text-xs text-muted-foreground">your guess: AI</span>
-        )}
-      </div>
-    </div>
+    </button>
   );
 }
 
@@ -488,8 +406,8 @@ function StartScreen({
         <CardHeader>
           <CardTitle className="text-2xl">Real or AI?</CardTitle>
           <CardDescription>
-            Two photos appear. One, both, or neither may be AI-generated.
-            Spot the fakes across {TOTAL_ROUNDS} rounds and see where you rank.
+            Two photos appear — one is real, one is AI-generated. Spot the
+            fake across {TOTAL_ROUNDS} rounds and see where you rank.
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-6">
@@ -569,20 +487,18 @@ function ModeButton({
 
 function FinishedScreen({
   stats,
-  correct,
-  total,
   mode,
   onRestart,
 }: {
   stats: ScoreStats;
-  correct: number;
-  total: number;
   mode: Mode;
   onRestart: () => void;
 }) {
+  const correct = stats.rounds.filter((r) => r.correct).length;
+  const total = stats.rounds.length;
   const beat = stats.percentile;
   return (
-    <div className="w-full max-w-xl mx-auto px-4 py-10">
+    <div className="w-full max-w-2xl mx-auto px-4 py-10">
       <Card>
         <CardHeader>
           <CardTitle className="text-2xl flex items-center gap-2">
@@ -606,11 +522,95 @@ function FinishedScreen({
             <Distribution buckets={stats.distribution} yourScore={stats.yourScore} />
           </div>
 
+          {stats.rounds.length > 0 && (
+            <ReviewGallery rounds={stats.rounds} />
+          )}
+
           <Button size="lg" className="w-full h-12 gap-2" onClick={onRestart}>
             <RefreshCw className="size-4" /> Play again
           </Button>
         </CardContent>
       </Card>
+    </div>
+  );
+}
+
+function ReviewGallery({ rounds }: { rounds: RoundHistoryEntry[] }) {
+  return (
+    <div>
+      <Separator className="mb-4" />
+      <p className="text-sm font-medium mb-3">Review</p>
+      <div className="flex flex-col gap-3">
+        {rounds.map((r, i) => (
+          <ReviewRow key={i} index={i + 1} entry={r} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ReviewRow({
+  index,
+  entry,
+}: {
+  index: number;
+  entry: RoundHistoryEntry;
+}) {
+  const leftIsAi = entry.truth === "left";
+  const pickedLeft = entry.guess === "left";
+  return (
+    <div className="flex items-center gap-3 rounded-lg border p-2">
+      <div className="flex gap-2 flex-1 min-w-0">
+        <ReviewThumb id={entry.leftId} isAi={leftIsAi} picked={pickedLeft} />
+        <ReviewThumb id={entry.rightId} isAi={!leftIsAi} picked={!pickedLeft} />
+      </div>
+      <div className="flex items-center gap-2 shrink-0">
+        <span className="text-xs text-muted-foreground w-6">#{index}</span>
+        {entry.correct ? (
+          <Check className="size-4 text-emerald-500" />
+        ) : (
+          <X className="size-4 text-destructive" />
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ReviewThumb({
+  id,
+  isAi,
+  picked,
+}: {
+  id: string;
+  isAi: boolean;
+  picked: boolean;
+}) {
+  return (
+    <div className="relative flex-1">
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={`/api/img/${id}`}
+        alt=""
+        className="w-full h-16 object-cover rounded"
+        draggable={false}
+      />
+      <div className="absolute top-1 left-1 flex gap-1">
+        <Badge
+          variant={isAi ? "default" : "secondary"}
+          className="text-[10px] h-4 px-1"
+        >
+          {isAi ? "AI" : "Real"}
+        </Badge>
+      </div>
+      {picked && (
+        <div className="absolute top-1 right-1">
+          {isAi ? (
+            <Check className="size-3.5 text-emerald-500 bg-background/80 rounded" />
+          ) : (
+            <X className="size-3.5 text-destructive bg-background/80 rounded" />
+          )}
+        </div>
+      )}
     </div>
   );
 }

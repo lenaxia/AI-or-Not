@@ -38,7 +38,7 @@ export async function POST(request: Request) {
   }
 
   const isCorrect = payload.t === parsed.data.guess;
-  const state = recordGuess(parsed.data.gameToken, isCorrect);
+  const state = recordGuess(parsed.data.gameToken, parsed.data.guess, isCorrect);
   if (!state) {
     return Response.json(
       { error: "invalid-game-token", message: "Game session expired or invalid." },
@@ -46,11 +46,9 @@ export async function POST(request: Request) {
     );
   }
 
-  // Update ELO for both images in the round. Awaited inside try/catch so a
-  // failure can never break the guess response, but the work actually runs
-  // before the Response is returned (fire-and-forget would be unsafe in
-  // serverless where the runtime can be torn down once the Response leaves).
-  // Each update is a single atomic SQL statement (no RMW race — see elo.ts).
+  // Update ELO for both images. Awaited inside try/catch so a failure
+  // can never break the guess response, but the work actually runs before
+  // the Response is returned (fire-and-forget is unsafe in serverless).
   const guess = parsed.data.guess;
   const leftLabel = labelForSide(payload.t, "left");
   const rightLabel = labelForSide(payload.t, "right");
@@ -63,10 +61,8 @@ export async function POST(request: Request) {
     console.warn("[guess] ELO update failed:", err);
   }
 
+  // No truth/correct leak — only the running round count.
   const result: GuessResponse = {
-    correct: isCorrect,
-    truth: payload.t,
-    correctSoFar: state.correct,
     totalSoFar: state.total,
   };
   return Response.json(result);

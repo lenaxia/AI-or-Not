@@ -5,17 +5,18 @@
 [![Docker](https://github.com/lenaxia/AI-or-Not/actions/workflows/docker-publish.yml/badge.svg)](https://github.com/lenaxia/AI-or-Not/actions/workflows/docker-publish.yml)
 [![Container](https://img.shields.io/badge/container-ghcr.io-blue?logo=docker)](https://github.com/lenaxia/AI-or-Not/pkgs/container/ai-or-not)
 
-> Two photos appear. One, both, or neither may be AI-generated. **Can you tell?**
-> Play 10 rounds and see where you land on the player distribution.
+> Two photos appear. One is real, one is AI-generated. **Can you tell which?**
+> Click the fake across 10 rounds and see where you land on the player distribution.
 
 AI-or-Not is a game that tests whether you can spot AI-generated images.
-Every round shows two photos side by side and asks a harder question than
-"left or right": the right answer might be **left**, **right**, **both**, or
-**neither** — so a coin-flip scores ~25% and real skill shows up in the curve.
+Every round shows two photos side by side — exactly one is AI, one is real.
+Click the one you think is fake. A coin-flip scores ~50%, so real skill
+shows up in the curve.
 
 The backend serves every image through an **opaque, server-proxied endpoint**
 so the source of each photo is never exposed to the browser. Players can't
-cheat by inspecting filenames, URLs, or the network tab.
+cheat by inspecting filenames, URLs, or the network tab. No per-round
+feedback is given — answers are revealed in an end-of-game review gallery.
 
 ## Project goals
 
@@ -42,7 +43,7 @@ dedup**, and a small **admin portal**:
 
 ## Features
 
-- **A / B / None / Both** guessing — nuanced enough that skill is measurable
+- **Click-to-pick** — click the image you think is AI; no secondary buttons
 - **Easy** and **Hard** modes — Hard hides the images after 2 seconds
 - **Leaderboard & distribution** — rank, percentile, mean, and a histogram
   of all scores in the same mode
@@ -88,8 +89,8 @@ so it runs immediately — replace them to make it a real game.
 ## Adding images
 
 Drop image files into either folder. Supported types: `.jpg` `.jpeg` `.png`
-`.webp` `.gif` `.avif` `.bmp` `.svg`. You need **at least 2 images in each
-folder** to play.
+`.webp` `.gif` `.avif` `.bmp` `.svg`. You need **at least 10 images in each
+folder** (one unique pair per round — images don't repeat within a game).
 
 ```
 images/
