@@ -32,6 +32,7 @@ export interface RoundRecord {
 export interface GuessRecord {
   guess: Verdict;
   correct: boolean;
+  timeMs?: number;
 }
 
 export interface GameState {
@@ -135,12 +136,13 @@ export function recordGuess(
   gameToken: string,
   guess: Verdict,
   correct: boolean,
+  timeMs?: number,
 ): GameState | null {
   const state = resolveGame(gameToken);
   if (!state) return null;
   state.total += 1;
   if (correct) state.correct += 1;
-  state.guesses.push({ guess, correct });
+  state.guesses.push({ guess, correct, timeMs });
   return state;
 }
 

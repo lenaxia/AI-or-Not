@@ -38,7 +38,7 @@ export async function POST(request: Request) {
   }
 
   const isCorrect = payload.t === parsed.data.guess;
-  const state = recordGuess(parsed.data.gameToken, parsed.data.guess, isCorrect);
+  const state = recordGuess(parsed.data.gameToken, parsed.data.guess, isCorrect, parsed.data.timeMs);
   if (!state) {
     return Response.json(
       { error: "invalid-game-token", message: "Game session expired or invalid." },

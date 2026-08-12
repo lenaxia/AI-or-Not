@@ -50,6 +50,7 @@ export interface RoundHistoryEntry {
   truth: Verdict;
   guess: Verdict;
   correct: boolean;
+  timeMs?: number;
 }
 
 export interface ScoreStats {
@@ -63,6 +64,10 @@ export interface ScoreStats {
   distribution: Bucket[];
   /** Per-round truth + guess for the end-of-game review gallery. */
   rounds: RoundHistoryEntry[];
+  /** Average decision time across all rounds (ms). */
+  avgTimeMs: number;
+  /** Population standard deviation of decision times (ms). */
+  timeStdDevMs: number;
 }
 
 export interface LeaderboardEntry {

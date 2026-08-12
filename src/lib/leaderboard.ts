@@ -66,6 +66,7 @@ export async function submitScore(
 
   // Build the review gallery from server-stored rounds + guesses.
   const rounds: RoundHistoryEntry[] = [];
+  const times: number[] = [];
   for (let i = 0; i < game.rounds.length; i++) {
     const r = game.rounds[i]!;
     const g = game.guesses[i];
@@ -76,8 +77,22 @@ export async function submitScore(
       truth: r.truth,
       guess: g.guess,
       correct: g.correct,
+      timeMs: g.timeMs,
     });
+    if (typeof g.timeMs === "number") times.push(g.timeMs);
   }
+
+  // Decision-time stats (population std dev).
+  const avgTimeMs = times.length > 0
+    ? Math.round(times.reduce((a, b) => a + b, 0) / times.length)
+    : 0;
+  const timeStdDevMs = times.length > 0
+    ? Math.round(
+        Math.sqrt(
+          times.reduce((sum, t) => sum + (t - avgTimeMs) ** 2, 0) / times.length,
+        ),
+      )
+    : 0;
 
   return {
     total: peerCount,
@@ -92,6 +107,8 @@ export async function submitScore(
     yourScore: score,
     distribution: buildBuckets(peers),
     rounds,
+    avgTimeMs,
+    timeStdDevMs,
   };
 }
 

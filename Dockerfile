@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
 #
-# Real or AI? — production image.
+# AI or Not — production image.
 #
 # Multi-stage build using Next.js `output: "standalone"`:
 #   deps     — installs node_modules (cached layer)

@@ -37,19 +37,22 @@ const TOTAL_ROUNDS = 10;
 const HARD_REVEAL_MS = 2000;
 
 type Phase = "start" | "loading" | "playing" | "finished";
+/** Hard-mode reveal sequence: left image, then right, then both hidden. */
+type HardReveal = "left" | "right" | "hidden";
 
 export default function Game() {
   const [phase, setPhase] = useState<Phase>("start");
   const [mode, setMode] = useState<Mode>("easy");
   const [round, setRound] = useState(0);
   const [current, setCurrent] = useState<RoundResponse | null>(null);
-  const [hidden, setHidden] = useState(false);
+  const [hardReveal, setHardReveal] = useState<HardReveal | null>(null);
   const [stats, setStats] = useState<ScoreStats | null>(null);
   const [preview, setPreview] = useState<LeaderboardPreview | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const gameTokenRef = useRef<string | null>(null);
-  const hardTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const timersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const roundStartRef = useRef<number>(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -66,13 +69,11 @@ export default function Game() {
     };
   }, []);
 
-  const clearHardTimer = () => {
-    if (hardTimer.current) {
-      clearTimeout(hardTimer.current);
-      hardTimer.current = null;
-    }
+  const clearTimers = () => {
+    for (const t of timersRef.current) clearTimeout(t);
+    timersRef.current = [];
   };
-  useEffect(() => () => clearHardTimer(), []);
+  useEffect(() => () => clearTimers(), []);
 
   const fetchRound = useCallback(async (m: Mode) => {
     const gameToken = gameTokenRef.current;
@@ -95,12 +96,23 @@ export default function Game() {
         return null;
       }
       setCurrent(data as RoundResponse);
+      clearTimers();
       if (m === "hard") {
-        setHidden(false);
-        clearHardTimer();
-        hardTimer.current = setTimeout(() => setHidden(true), HARD_REVEAL_MS);
+        // Sequential reveal: left for 2s → right for 2s → both hidden.
+        // Timer starts AFTER the reveal sequence ends (when player can decide).
+        setHardReveal("left");
+        timersRef.current.push(
+          setTimeout(() => setHardReveal("right"), HARD_REVEAL_MS),
+        );
+        timersRef.current.push(
+          setTimeout(() => {
+            setHardReveal("hidden");
+            roundStartRef.current = Date.now();
+          }, HARD_REVEAL_MS * 2),
+        );
       } else {
-        setHidden(false);
+        setHardReveal(null);
+        roundStartRef.current = Date.now();
       }
       setBusy(false);
       return data as RoundResponse;
@@ -143,28 +155,31 @@ export default function Game() {
   // Click an image = submit that side as the AI guess.
   const pickSide = async (v: Verdict) => {
     if (!current || phase !== "playing" || busy) return;
+    // In hard mode, block clicks during the reveal sequence.
+    if (mode === "hard" && hardReveal !== "hidden") return;
     const gameToken = gameTokenRef.current;
     if (!gameToken) {
       setError("Game session lost. Please restart.");
       setPhase("start");
       return;
     }
+    const timeMs = roundStartRef.current
+      ? Date.now() - roundStartRef.current
+      : undefined;
     setBusy(true);
-    clearHardTimer();
+    clearTimers();
     try {
       const res = await fetch("/api/game/guess", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token: current.token, guess: v, gameToken }),
+        body: JSON.stringify({ token: current.token, guess: v, gameToken, timeMs }),
       });
       await res.json();
-      // No truth/correct feedback — immediately advance.
     } catch {
       setError("Network error submitting guess.");
     }
 
     if (round >= TOTAL_ROUNDS) {
-      // Game over — submit to leaderboard.
       setPhase("loading");
       try {
         const res = await fetch("/api/leaderboard", {
@@ -181,7 +196,6 @@ export default function Game() {
         setStats(data as ScoreStats);
         setPhase("finished");
         gameTokenRef.current = null;
-        // Refresh preview.
         (async () => {
           try {
             const p = await fetch("/api/leaderboard");
@@ -196,7 +210,6 @@ export default function Game() {
       return;
     }
 
-    // Next round.
     setRound((r) => r + 1);
     setPhase("loading");
     const ok = await fetchRound(mode);
@@ -205,12 +218,12 @@ export default function Game() {
   };
 
   const restart = () => {
-    clearHardTimer();
+    clearTimers();
     setPhase("start");
     setCurrent(null);
     setStats(null);
     setRound(0);
-    setHidden(false);
+    setHardReveal(null);
     gameTokenRef.current = null;
   };
 
@@ -252,28 +265,55 @@ export default function Game() {
         <ClickableImagePanel
           id={current?.leftId}
           side="left"
-          hidden={hidden && phase === "playing"}
-          disabled={busy || phase !== "playing"}
+          showImage={
+            phase === "playing" &&
+            (mode === "easy" || hardReveal === "left" || hardReveal === "hidden")
+          }
+          showPlaceholder={
+            phase === "playing" &&
+            mode === "hard" &&
+            hardReveal === "hidden"
+          }
+          disabled={
+            busy ||
+            phase !== "playing" ||
+            (mode === "hard" && hardReveal !== "hidden")
+          }
           onPick={() => void pickSide("left")}
         />
         <ClickableImagePanel
           id={current?.rightId}
           side="right"
-          hidden={hidden && phase === "playing"}
-          disabled={busy || phase !== "playing"}
+          showImage={
+            phase === "playing" &&
+            (mode === "easy" || hardReveal === "right" || hardReveal === "hidden")
+          }
+          showPlaceholder={
+            phase === "playing" &&
+            mode === "hard" &&
+            hardReveal === "hidden"
+          }
+          disabled={
+            busy ||
+            phase !== "playing" ||
+            (mode === "hard" && hardReveal !== "hidden")
+          }
           onPick={() => void pickSide("right")}
         />
       </div>
 
       <div className="mt-6">
         {phase === "playing" ? (
-          hidden ? (
-            <p className="text-center text-sm text-muted-foreground h-9 flex items-center justify-center gap-2">
-              <EyeOff className="size-4" /> Images hidden — pick from memory!
-            </p>
-          ) : mode === "hard" ? (
+          mode === "hard" && hardReveal !== "hidden" ? (
             <p className="text-center text-sm text-amber-600 dark:text-amber-500 h-9 flex items-center justify-center gap-2">
-              <Eye className="size-4" /> Memorize quickly — they hide in 2s…
+              <Eye className="size-4" />{" "}
+              {hardReveal === "left"
+                ? "Left image — memorize!"
+                : "Right image — memorize!"}
+            </p>
+          ) : mode === "hard" && hardReveal === "hidden" ? (
+            <p className="text-center text-sm text-muted-foreground h-9 flex items-center justify-center gap-2">
+              <EyeOff className="size-4" /> Both hidden — pick from memory!
             </p>
           ) : (
             <p className="text-center text-sm text-muted-foreground h-9 flex items-center justify-center">
@@ -326,13 +366,15 @@ function Header({
 function ClickableImagePanel({
   id,
   side,
-  hidden,
+  showImage,
+  showPlaceholder,
   disabled,
   onPick,
 }: {
   id?: string;
   side: "left" | "right";
-  hidden: boolean;
+  showImage: boolean;
+  showPlaceholder: boolean;
   disabled: boolean;
   onPick: () => void;
 }) {
@@ -349,13 +391,13 @@ function ClickableImagePanel({
       }`}
     >
       <div
-        className={`relative w-full max-h-[60vh] overflow-hidden rounded-xl ring-1 transition-all bg-muted flex items-center justify-center ${
+        className={`relative w-full overflow-hidden rounded-xl ring-1 transition-all bg-muted flex items-center justify-center ${
           disabled
             ? "ring-foreground/10"
             : "ring-foreground/10 group-hover:ring-2 group-hover:ring-primary group-focus-visible:ring-2 group-focus-visible:ring-primary"
         }`}
       >
-        {id && !hidden ? (
+        {id && showImage ? (
           // eslint-disable-next-line @next/next/no-img-element -- opaque server-proxied image
           <img
             src={`/api/img/${id}`}
@@ -363,19 +405,18 @@ function ClickableImagePanel({
             className="w-full max-h-[60vh] object-contain"
             draggable={false}
           />
+        ) : showPlaceholder ? (
+          /* Hard mode: images hidden but panel is still clickable */
+          <div className="w-full aspect-[4/3] flex flex-col items-center justify-center text-muted-foreground gap-2">
+            <EyeOff className="size-10" />
+            <span className="text-sm">Pick {side}</span>
+          </div>
         ) : (
-          <div className="absolute inset-0 flex items-center justify-center text-muted-foreground">
-            {hidden ? (
-              <span className="flex flex-col items-center gap-2">
-                <EyeOff className="size-8" />
-                <span className="text-xs">Hidden</span>
-              </span>
-            ) : (
-              <Loader2 className="size-8 animate-spin" />
-            )}
+          <div className="w-full aspect-[4/3] flex items-center justify-center text-muted-foreground">
+            <Loader2 className="size-8 animate-spin" />
           </div>
         )}
-        {!disabled && (
+        {!disabled && showPlaceholder && (
           <div className="absolute inset-0 bg-primary/0 group-hover:bg-primary/5 transition-colors flex items-center justify-center">
             <span className="opacity-0 group-hover:opacity-100 transition-opacity text-sm font-medium bg-background/80 rounded-full px-3 py-1">
               {side === "left" ? "← This is AI" : "This is AI →"}
@@ -404,7 +445,7 @@ function StartScreen({
     <div className="w-full max-w-xl mx-auto px-4 py-10">
       <Card>
         <CardHeader>
-          <CardTitle className="text-2xl">Real or AI?</CardTitle>
+          <CardTitle className="text-2xl">AI or Not?</CardTitle>
           <CardDescription>
             Two photos appear — one is real, one is AI-generated. Spot the
             fake across {TOTAL_ROUNDS} rounds and see where you rank.
@@ -516,6 +557,19 @@ function FinishedScreen({
             <Stat label="Avg (this mode)" value={`${stats.mean}%`} />
           </div>
 
+          {stats.avgTimeMs > 0 && (
+            <div className="grid grid-cols-2 gap-3 text-center">
+              <Stat
+                label="Avg decision time"
+                value={`${(stats.avgTimeMs / 1000).toFixed(1)}s`}
+              />
+              <Stat
+                label="Std deviation"
+                value={`±${(stats.timeStdDevMs / 1000).toFixed(1)}s`}
+              />
+            </div>
+          )}
+
           <div>
             <p className="text-sm font-medium mb-2">
               Where you sit ({stats.total} {mode} games)
@@ -580,8 +634,8 @@ function ReviewRow({
       onClick={onSelect}
       className="flex items-center gap-3 rounded-lg border p-2 w-full text-left hover:bg-muted transition-colors"
     >
-      {/* Index + correctness on the left */}
-      <div className="flex items-center gap-2 shrink-0 w-14 justify-center">
+      {/* Index + correctness + time on the left */}
+      <div className="flex flex-col items-center gap-1 shrink-0 w-16 justify-center">
         <span className="text-sm font-semibold text-muted-foreground tabular-nums">
           {index}
         </span>
@@ -589,6 +643,11 @@ function ReviewRow({
           <Check className="size-5 text-emerald-500" />
         ) : (
           <X className="size-5 text-destructive" />
+        )}
+        {typeof entry.timeMs === "number" && (
+          <span className="text-[10px] text-muted-foreground tabular-nums">
+            {(entry.timeMs / 1000).toFixed(1)}s
+          </span>
         )}
       </div>
       {/* Thumbnails */}

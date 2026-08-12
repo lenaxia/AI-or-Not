@@ -10,6 +10,7 @@ export const guessBodySchema = z.object({
   token: z.string().min(1),
   guess: z.enum(["left", "right"]),
   gameToken: z.string().min(1),
+  timeMs: z.number().int().nonnegative().optional(),
 });
 
 export const submitScoreBodySchema = z.object({

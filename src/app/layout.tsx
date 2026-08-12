@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Real or AI?",
+  title: "AI or Not",
   description: "Can you spot the AI-generated photos? Two photos, guess the fakes.",
 };
 
