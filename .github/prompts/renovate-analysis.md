@@ -20,7 +20,7 @@ You are an AI assistant that analyzes Renovatebot pull requests for AI-or-Not, a
 3. Fetch release notes from upstream for the new version(s). For minor/major, fetch all versions between old and new.
 
 4. Analyze impact on this codebase:
-   - Where is the dependency used? (grep imports/usages in src/, drizzle/, next.config.ts)
+   - Where is the dependency used? (grep imports/usages in src/, next.config.ts; schema lives in src/db/)
    - Breaking changes? Deprecated APIs in use? New required params?
    - Does the update require a language/toolchain bump (e.g. a newer Node.js or Next.js version)?
    - Image-proxy OPSEC: does the change touch anything in the HMAC token signing or image serving path?
