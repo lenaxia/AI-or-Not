@@ -1,0 +1,41 @@
+{
+  $schema: 'https://docs.renovatebot.com/renovate-schema.json',
+  extends: [
+    'config:recommended',
+    ':disableRateLimiting',
+    ':dependencyDashboard',
+    ':semanticCommits',
+  ],
+  dependencyDashboard: true,
+  dependencyDashboardTitle: 'Renovate Dashboard 🤖',
+  suppressNotifications: ['prEditedNotification', 'prIgnoreNotification'],
+  rebaseWhen: 'conflicted',
+  packageRules: [
+    {
+      description: ['Auto merge GitHub Actions digest/patch/minor updates'],
+      matchManagers: ['github-actions'],
+      automerge: true,
+      automergeType: 'branch',
+      ignoreTests: true,
+      matchUpdateTypes: ['digest', 'patch', 'minor'],
+    },
+    {
+      description: ['Never auto-merge anomalyco/opencode updates'],
+      matchPackageNames: ['anomalyco/opencode'],
+      automerge: false,
+    },
+    {
+      // Renovate must not manage the ai-workflows pins at all: the
+      // github-actions manager rewrites only the `uses:` ref, never the
+      // sibling callers' `with: version:` inputs, and the automerge rule
+      // above would land such half-bumps directly on main with no PR —
+      // permanently breaking propagate.yml's `version: OLD_TAG` repair sed
+      // (its single-OLD_TAG discovery then never matches again). Pins move
+      // only via propagate.yml lockstep syncs.
+      description: ['ai-workflows pins are bumped by propagate.yml syncs only'],
+      matchManagers: ['github-actions'],
+      matchPackageNames: ['lenaxia/ai-workflows'],
+      enabled: false,
+    },
+  ],
+}
